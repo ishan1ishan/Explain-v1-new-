@@ -5,6 +5,8 @@ export interface Scene {
   gen_prompt: string;
   startTime: number; // in seconds
   duration: number; // in seconds
+  top_text?: string;
+  labels?: string[];
 }
 
 export interface GeneratedImage {
@@ -14,7 +16,7 @@ export interface GeneratedImage {
   error?: string;
 }
 
-export type GenerationStatus = 'idle' | 'scripting' | 'audio-gen' | 'visual-gen' | 'complete' | 'error';
+export type GenerationStatus = 'idle' | 'scripting' | 'audio-gen' | 'visual-gen' | 'rendering' | 'complete' | 'error';
 
 export type VideoDuration = '5s' | '15s' | '30s' | '1min' | '2min' | '5min' | '25min';
 export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
@@ -55,4 +57,20 @@ export interface ScriptScene {
 export interface FullScript {
     scenes: ScriptScene[];
     estimatedCost?: number; // Real-time cost tracking
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  createdAt: any;
+}
+
+export interface VideoDocument {
+  id?: string;
+  uid: string;
+  title: string;
+  status: 'processing' | 'completed' | 'failed';
+  duration: string;
+  videoUrl: string;
+  createdAt: any; // Timestamp
 }

@@ -1,15 +1,35 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { generateScript, generateSceneImage, generateSpeech } from './services/geminiService';
+import { ensureUserExists, initVideoGeneration, completeVideoGeneration, failVideoGeneration } from './services/videoService'; 
 import SceneCard from './components/SceneCard';
 import LandingPage from './components/LandingPage';
+import Dashboard from './components/Dashboard';
 import { Scene, GeneratedImage, GenerationStatus, AppConfig, VideoDuration, VoiceName, VideoPitch, AspectRatio, VisualStyle, InputFile, InputMode, MusicStyle } from './types';
+import { auth, googleProvider } from './services/firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 const LANGUAGES = [
   "English", "Spanish", "French", "German", "Italian", "Portuguese", "Dutch", "Russian", 
   "Japanese", "Chinese (Simplified)", "Chinese (Traditional)", "Korean", "Arabic", 
   "Hindi", "Bengali", "Turkish", "Polish", "Swedish", "Norwegian", "Danish", "Finnish"
 ];
+
+// --- HELPER: UNLOCK AUDIO CONTEXT ---
+const unlockAudioContext = async (ctx: AudioContext) => {
+    try {
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+    } catch (e) {
+        console.error("Audio unlock failed", e);
+    }
+};
 
 // --- PROCEDURAL MUSIC GENERATOR (Royalty Free) ---
 const createProceduralBackgroundMusic = (style: MusicStyle, duration: number, ctx: AudioContext): AudioBuffer | null => {
@@ -53,23 +73,21 @@ const createProceduralBackgroundMusic = (style: MusicStyle, duration: number, ct
     const noteLength = beatLength * arpeggioSpeed;
     const samplesPerNote = Math.floor(noteLength * sampleRate);
 
-    // Simple Synth Logic
     for (let i = 0; i < totalFrames; i++) {
         const time = i / sampleRate;
-        const measurePos = time % (beatLength * 4);
         
         // Pad Layer (Sine/Tri mix)
-        const lfo = Math.sin(time * 0.5); // Slow movement
+        const lfo = Math.sin(time * 0.5); 
         const padFreq = baseFreq; 
         const padOsc = Math.sin(time * Math.PI * 2 * padFreq) * 0.1 * lfo;
         
         // Arpeggio Layer
         const arpIndex = Math.floor(time / noteLength) % chordIntervals.length;
-        const arpInterval = chordIntervals[arpIndex];
-        const arpFreq = baseFreq * Math.pow(2, arpInterval / 12) * 2; // Octave up
-        const arpOsc = (Math.sin(time * Math.PI * 2 * arpFreq) > 0 ? 0.05 : -0.05) * Math.exp(-((time % noteLength) * 5)); // Plucky
+        const arpIntervalValue = chordIntervals[arpIndex];
+        const arpFreq = baseFreq * Math.pow(2, arpIntervalValue / 12) * 2; 
+        const arpOsc = (Math.sin(time * Math.PI * 2 * arpFreq) > 0 ? 0.05 : -0.05) * Math.exp(-((time % noteLength) * 5)); 
 
-        // Noise/Rhythm Layer (Hi-hat ish)
+        // Noise/Rhythm Layer 
         let noise = 0;
         if (style === 'finance' || style === 'tech') {
              if (time % beatLength < 0.05) {
@@ -77,10 +95,7 @@ const createProceduralBackgroundMusic = (style: MusicStyle, duration: number, ct
              }
         }
 
-        // Mix
         const sample = (padOsc + arpOsc + noise) * 0.5;
-
-        // Stereo widener
         left[i] = sample;
         right[i] = sample * 0.9 + (Math.sin(time * 100) * 0.01); 
     }
@@ -138,13 +153,13 @@ const LocalCache = {
     }
 };
 
-// --- WORKER SETUP (PARALLEL) ---
+// --- WORKER SETUP ---
 const workerBlob = new Blob([`
 importScripts('https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.min.js');
 self.onmessage = function(e) {
   const { id, imgData, options } = e.data;
   try {
-      // ImageTracer can be CPU intensive, running in worker prevents UI freeze
+      if (!self.ImageTracer) throw new Error("ImageTracer not loaded");
       const svgStr = self.ImageTracer.imagedataToSVG(imgData, options);
       self.postMessage({ id, svgStr });
   } catch (err) {
@@ -153,25 +168,40 @@ self.onmessage = function(e) {
 };
 `], { type: 'application/javascript' });
 
-// Create a transient worker for each trace job to maximize multi-core parallelization
 const traceInWorker = (imgData: ImageData, options: any): Promise<string> => {
     return new Promise((resolve, reject) => {
         const workerUrl = URL.createObjectURL(workerBlob);
         const worker = new Worker(workerUrl);
+        let completed = false;
         
+        // Safety timeout for worker
+        const timeoutId = setTimeout(() => {
+            if (!completed) {
+                completed = true;
+                worker.terminate();
+                URL.revokeObjectURL(workerUrl);
+                reject(new Error("Worker timeout"));
+            }
+        }, 8000); // 8s max per image
+
         worker.onmessage = (e) => {
+            if (completed) return;
+            completed = true;
+            clearTimeout(timeoutId);
             const { svgStr, error } = e.data;
             if (error) {
                 reject(error);
             } else {
                 resolve(svgStr);
             }
-            // Cleanup
             worker.terminate();
             URL.revokeObjectURL(workerUrl);
         };
         
         worker.onerror = (err) => {
+            if (completed) return;
+            completed = true;
+            clearTimeout(timeoutId);
             reject(err);
             worker.terminate();
             URL.revokeObjectURL(workerUrl);
@@ -181,19 +211,16 @@ const traceInWorker = (imgData: ImageData, options: any): Promise<string> => {
     });
 };
 
-// --- Vector Path Data ---
 interface DrawablePath {
   path2D: Path2D;
   length: number;
   color: string;
-  width: number; // stroke width
+  width: number; 
   type: 'stroke' | 'fill';
   minX: number;
   minY: number;
   maxX: number;
   maxY: number;
-  
-  // Animation coordinates
   startX: number;
   startY: number;
   endX: number;
@@ -202,17 +229,13 @@ interface DrawablePath {
 
 interface SceneAssets {
   originalImage: HTMLImageElement;
-  drawables: DrawablePath[]; // Unified list of all strokes and fills
-  totalLength: number; // For smooth animation calculations
-  // Dimensions of the coordinate space used for vectorization
+  drawables: DrawablePath[]; 
+  totalLength: number;
   canvasWidth: number; 
   canvasHeight: number;
-  // Bounding box of the ACTUAL content (ink)
   contentBounds: { minX: number, minY: number, maxX: number, maxY: number };
 }
 
-// --- Helper: Color Snapping (Fixes muddy colors) ---
-// Forces colors to match the predefined marker palette or Black/White.
 const snapToMarkerColor = (colorStr: string): string | null => {
     if (!colorStr) return '#000000';
     
@@ -234,25 +257,16 @@ const snapToMarkerColor = (colorStr: string): string | null => {
         return '#000000';
     }
 
-    // 1. Detect White / Background (AGGRESSIVE)
-    // Ignore White, Off-white, and Light Gray
     if (r > 210 && g > 210 && b > 210) return null; 
-
-    // 2. Detect Black / Dark Grey
     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
     if (brightness < 50) return '#000000';
 
-    // 3. Detect Greyscale (Low Saturation) -> Force to Black
     const maxVal = Math.max(r, g, b);
     const minVal = Math.min(r, g, b);
     const saturation = maxVal === 0 ? 0 : (maxVal - minVal) / maxVal;
     
-    // Only snap to black if it's NOT a vibrant color. 
-    // Dark Blue (0,0,100) has saturation 1.0. 
-    // We adjust threshold to allow dark blue ink.
     if (saturation < 0.10) return '#000000'; 
 
-    // 4. Snap to Expanded Palette (Sketch-Note style + Ballpoint)
     const palette = [
         { c: '#06B6D4', r: 6, g: 182, b: 212 },  // Cyan
         { c: '#9333EA', r: 147, g: 51, b: 234 }, // Purple
@@ -283,9 +297,7 @@ const snapToMarkerColor = (colorStr: string): string | null => {
     return closest.c;
 }
 
-// --- HELPER: Vector & Layer Extraction ---
 const processSceneImage = async (sourceImg: HTMLImageElement): Promise<SceneAssets> => {
-    // OPTIMIZATION: Use Higher Resolution for text clarity
     const MAX_DIM = 1280;
     let scale = 1.0;
     if (sourceImg.width > MAX_DIM || sourceImg.height > MAX_DIM) {
@@ -317,17 +329,16 @@ const processSceneImage = async (sourceImg: HTMLImageElement): Promise<SceneAsse
     
     const imgData = ctx.getImageData(0, 0, workW, workH);
     
-    // ADJUSTED: Settings for "Clear and Exact"
     const options = {
-        ltres: 0.01, // Very strict linear threshold for exact path following
-        qtres: 0.01, // Very strict quadratic threshold
-        pathomit: 10, // Only omit VERY small noise. (Previous 50 was too high, deleting details)
+        ltres: 0.01, 
+        qtres: 0.01, 
+        pathomit: 10,
         rightangleenhance: false,
         colorsampling: 2, 
         numberofcolors: 32, 
         strokewidth: 0, 
         linefilter: true,
-        blurradius: 0, // No blur = Sharper lines
+        blurradius: 0, 
         blurdelta: 0, 
         viewbox: true,
         desc: false,
@@ -358,16 +369,14 @@ const processSceneImage = async (sourceImg: HTMLImageElement): Promise<SceneAsse
     pathElements.forEach((p) => {
         let fill = p.getAttribute('fill');
         let stroke = p.getAttribute('stroke');
-        let strokeWidth = parseFloat(p.getAttribute('stroke-width') || '0');
         
         let colorStr = fill;
         if ((!colorStr || colorStr === 'none') && stroke) {
              colorStr = stroke;
         }
 
-        // --- COLOR SNAPPING ---
         const snappedColor = snapToMarkerColor(colorStr || '#000000');
-        if (!snappedColor) return; // Discard white/background
+        if (!snappedColor) return; 
 
         const d = p.getAttribute('d');
         if (d) {
@@ -375,7 +384,6 @@ const processSceneImage = async (sourceImg: HTMLImageElement): Promise<SceneAsse
             tempPath.setAttribute('d', d);
             const len = tempPath.getTotalLength ? tempPath.getTotalLength() : 100;
             
-            // Secondary dust filter
             if (len < 10) return; 
 
             const path2D = new Path2D(d);
@@ -412,27 +420,20 @@ const processSceneImage = async (sourceImg: HTMLImageElement): Promise<SceneAsse
         }
     });
 
-    // --- ARTIFACT FILTERING (Fix Black Strips) ---
-    // Remove detected letterbox/pillarbox bars that sometimes appear in generated images
     drawables = drawables.filter(d => {
         if (d.color === '#000000') {
             const isFullWidth = (d.maxX - d.minX) > (workW * 0.90);
             const isFullHeight = (d.maxY - d.minY) > (workH * 0.90);
-            
             const isTopEdge = d.minY < (workH * 0.1);
             const isBottomEdge = d.maxY > (workH * 0.9);
             const isLeftEdge = d.minX < (workW * 0.1);
             const isRightEdge = d.maxX > (workW * 0.9);
-
-            // Filter Top/Bottom Bars
             if (isFullWidth && (isTopEdge || isBottomEdge)) return false;
-            // Filter Side Bars
             if (isFullHeight && (isLeftEdge || isRightEdge)) return false;
         }
         return true;
     });
 
-    // --- GLOBAL BOUNDING BOX (FOR AUTO-ZOOM) ---
     let globalMinX = workW, globalMinY = workH;
     let globalMaxX = 0, globalMaxY = 0;
 
@@ -443,13 +444,11 @@ const processSceneImage = async (sourceImg: HTMLImageElement): Promise<SceneAsse
         if (d.maxY > globalMaxY) globalMaxY = d.maxY;
     });
 
-    // Fallback if empty
     if (drawables.length === 0) {
         globalMinX = 0; globalMinY = 0; globalMaxX = workW; globalMaxY = workH;
     }
 
     const sortedDrawables = [...drawables].sort((a, b) => {
-        // OPTIMIZED SORTING: Top-to-Bottom, Left-to-Right
         const lineTolerance = 40; 
         if (Math.abs(a.minY - b.minY) < lineTolerance) {
             return a.minX - b.minX;
@@ -467,7 +466,6 @@ const processSceneImage = async (sourceImg: HTMLImageElement): Promise<SceneAsse
     };
 };
 
-// ... (Audio Helpers omitted for brevity as they didn't change) ...
 const concatenateAudioBuffers = (buffers: AudioBuffer[], ctx: AudioContext, musicBuffer: AudioBuffer | null): AudioBuffer => {
     const totalVoiceLength = buffers.reduce((acc, b) => acc + b.length, 0);
     const result = ctx.createBuffer(2, totalVoiceLength, buffers[0].sampleRate);
@@ -503,17 +501,10 @@ const concatenateAudioBuffers = (buffers: AudioBuffer[], ctx: AudioContext, musi
 };
 
 export const App: React.FC = () => {
-  // ... (State and hooks omitted for brevity, assumed same) ...
-  const [showDashboard, setShowDashboard] = useState(false);
-
-  const user = {
-      displayName: "Guest Creator",
-      email: "guest@explain.ltd",
-      photoURL: null
-  };
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const savedTopic = sessionStorage.getItem('explain_topic') || '';
-  
   const [topic, setTopic] = useState(savedTopic);
   const [uploadedFile, setUploadedFile] = useState<InputFile | undefined>(undefined);
   
@@ -521,7 +512,7 @@ export const App: React.FC = () => {
     duration: '30s', 
     voice: 'Kore', 
     pitch: 'normal',
-    aspectRatio: '16:9',
+    aspectRatio: '16:9', 
     visualStyle: 'hand-drawn',
     language: 'English',
     inputMode: 'prompt',
@@ -529,24 +520,26 @@ export const App: React.FC = () => {
     logoData: null
   });
 
-  const [fullAudioBuffer, setFullAudioBuffer] = useState<AudioBuffer | null>(null);
   const [fullScriptText, setFullScriptText] = useState<string>('');
-  const [scenes, setScenes] = useState<Scene & { top_text?: string; labels?: string[] }[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
   const [images, setImages] = useState<Record<number, GeneratedImage>>({});
-  const [lastRunCost, setLastRunCost] = useState<number>(0);
   
+  // New States for Split Workflow
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+  const [generatedVideoBlob, setGeneratedVideoBlob] = useState<Blob | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [detailedStatus, setDetailedStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [generatedCount, setGeneratedCount] = useState(0);
   
-  const [isRendering, setIsRendering] = useState(false);
-  const isRenderingRef = useRef(false); 
   const [renderProgress, setRenderProgress] = useState(0);
-
-  // Asset Caching
+  const [showDashboard, setShowDashboard] = useState(false);
+  
   const assetsCache = useRef<Record<number, SceneAssets>>({});
-  const processingPromises = useRef<Record<number, Promise<SceneAssets>>>({});
+  const rasterCache = useRef<Record<number, HTMLImageElement>>({});
   
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -557,57 +550,43 @@ export const App: React.FC = () => {
     return audioCtxRef.current;
   };
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        setUser(currentUser);
+        setAuthLoading(false);
+        if (currentUser && currentUser.email) {
+            ensureUserExists({ uid: currentUser.uid, email: currentUser.email });
+        }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+        sessionStorage.setItem('explain_topic', topic);
+    }
+  }, [topic, user]);
+
+  const handleLogin = async () => {
+      try {
+          await signInWithPopup(auth, googleProvider);
+      } catch (err: any) {
+          console.error("Login failed", err);
+          setError("Authentication failed. Please try again.");
+      }
+  };
+
   const handleLogout = async () => {
-      setShowDashboard(false);
+      await signOut(auth);
       setScenes([]);
       setImages({});
       setTopic('');
       setStatus('idle');
-      setLastRunCost(0);
+      setUploadedFile(undefined);
+      setFullScriptText('');
+      setGeneratedVideoUrl(null);
+      setGeneratedVideoBlob(null);
   };
-
-  useEffect(() => {
-    sessionStorage.setItem('explain_topic', topic);
-  }, [topic]);
-
-  useEffect(() => {
-    scenes.forEach(scene => {
-      const imgEntry = images[scene.id];
-      if (
-        imgEntry?.imageUrl && 
-        !imgEntry.loading && 
-        !assetsCache.current[scene.id] &&
-        !processingPromises.current[scene.id]
-      ) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = imgEntry.imageUrl;
-        
-        const promise = new Promise<SceneAssets>((resolve) => {
-           img.onload = async () => {
-               // This calls the Parallelized + Downscaled processor
-               const assets = await processSceneImage(img);
-               assetsCache.current[scene.id] = assets;
-               resolve(assets);
-           };
-           img.onerror = () => {
-               console.error(`Failed to load image for processing: ${scene.id}`);
-               resolve({ 
-                   originalImage: img, 
-                   drawables: [], 
-                   totalLength: 0,
-                   canvasWidth: 0,
-                   canvasHeight: 0,
-                   contentBounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 }
-               });
-           };
-        });
-        
-        processingPromises.current[scene.id] = promise;
-      }
-    });
-  }, [images, scenes]);
-
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'document' | 'logo') => {
     const file = e.target.files?.[0];
@@ -642,8 +621,7 @@ export const App: React.FC = () => {
   const processSceneQueue = async (scenesToProcess: (Scene & { top_text?: string; labels?: string[] })[]) => {
     const CONCURRENCY_LIMIT = 5; 
     const queue = [...scenesToProcess];
-    const total = scenesToProcess.length;
-    let completed = 0;
+    const generatedResults: Record<number, string> = {};
 
     const worker = async () => {
         while (queue.length > 0) {
@@ -668,6 +646,7 @@ export const App: React.FC = () => {
                      );
                      await LocalCache.set(cacheKey, url);
                  } 
+                 generatedResults[scene.id] = url;
                  setImages(prev => ({
                     ...prev,
                     [scene.id]: { sceneId: scene.id, imageUrl: url, loading: false }
@@ -679,7 +658,6 @@ export const App: React.FC = () => {
                     [scene.id]: { sceneId: scene.id, imageUrl: null, loading: false, error: "Failed" }
                 }));
             } finally {
-                completed++;
                 setGeneratedCount(prev => prev + 1);
                 setDetailedStatus(""); 
             }
@@ -691,29 +669,302 @@ export const App: React.FC = () => {
         workers.push(worker());
     }
     await Promise.all(workers);
+    return generatedResults;
+  };
+
+  const preloadAssets = async (scenesToRender: Scene[], imageMap: Record<number, string>) => {
+      const promises = scenesToRender.map(scene => {
+          return new Promise<void>((resolve) => {
+              const url = imageMap[scene.id];
+              // If no URL (failed gen), skip gracefully
+              if (!url) { resolve(); return; }
+
+              const img = new Image();
+              img.crossOrigin = "anonymous";
+              img.src = url;
+              
+              // Set a timeout to prevent hanging forever on a bad image
+              const timeout = setTimeout(() => {
+                  console.warn(`Asset load timed out for scene ${scene.id}`);
+                  resolve();
+              }, 5000);
+
+              img.onload = async () => {
+                  clearTimeout(timeout);
+                  rasterCache.current[scene.id] = img;
+                  try {
+                      const assets = await processSceneImage(img);
+                      assetsCache.current[scene.id] = assets;
+                  } catch(e) {
+                      console.error("Vector trace failed for scene", scene.id);
+                  }
+                  resolve();
+              };
+              img.onerror = () => {
+                  clearTimeout(timeout);
+                  console.error(`Failed to load asset for scene ${scene.id}`);
+                  resolve(); 
+              };
+          });
+      });
+      await Promise.all(promises);
+  };
+
+  const renderVideoToBlob = async (scenesToRender: Scene[], audioBuffer: AudioBuffer): Promise<Blob> => {
+      return new Promise(async (resolve, reject) => {
+        try {
+            const audioCtx = getAudioContext();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+            // Keep Alive Oscillator (prevents audio engine sleeping)
+            const keepAliveOsc = audioCtx.createOscillator();
+            const keepAliveGain = audioCtx.createGain();
+            keepAliveOsc.type = 'sine'; keepAliveOsc.frequency.value = 440; keepAliveGain.gain.value = 0.0001;
+            keepAliveOsc.connect(keepAliveGain); keepAliveGain.connect(audioCtx.destination);
+            keepAliveOsc.start();
+
+            let renderW = 1080, renderH = 1080;
+            if (config.aspectRatio === '16:9') { renderW = 1920; renderH = 1080; }
+            else if (config.aspectRatio === '9:16') { renderW = 1080; renderH = 1920; }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = renderW; canvas.height = renderH;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            if(!ctx) { reject(new Error("Canvas error")); return; }
+
+            // Logo Preload
+            let logoImg: HTMLImageElement | null = null;
+            if (config.logoData) {
+                try {
+                    logoImg = new Image();
+                    logoImg.src = config.logoData;
+                    await new Promise((r, rej) => { 
+                        logoImg!.onload = r; 
+                        logoImg!.onerror = () => r(null); // Continue without logo if fail
+                        setTimeout(() => r(null), 2000); // 2s timeout
+                    });
+                } catch(e) { console.error("Logo load failed", e); }
+            }
+
+            const dest = audioCtx.createMediaStreamDestination();
+            keepAliveGain.disconnect(); keepAliveGain.connect(dest);
+
+            const canvasStream = canvas.captureStream(30);
+            const combinedStream = new MediaStream([ ...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks() ]);
+            
+            // Supported MIME check
+            const mimeTypes = [
+                'video/webm;codecs=vp9', 
+                'video/webm', 
+                'video/mp4'
+            ];
+            const mimeType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+            if (!mimeType) {
+                reject(new Error("No supported video MIME type found in this browser."));
+                return;
+            }
+
+            const mediaRecorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 8000000 });
+            const chunks: Blob[] = [];
+            
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                try { keepAliveOsc.stop(); keepAliveOsc.disconnect(); } catch(e){}
+                const blob = new Blob(chunks, { type: mimeType });
+                resolve(blob);
+            };
+
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            
+            let detuneValue = 0;
+            if (config.pitch === 'high') detuneValue = 100;
+            if (config.pitch === 'low') detuneValue = -100;
+            source.detune.value = detuneValue;
+            source.connect(dest);
+            
+            source.onended = () => {
+                // Failsafe: Ensure recorder stops when audio stops
+                if (mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                    setRenderProgress(100);
+                }
+            };
+
+            // Timeslice 1000ms for memory safety
+            mediaRecorder.start(1000);
+            const startTime = audioCtx.currentTime;
+            source.start(startTime);
+
+            const pitchFactor = Math.pow(2, detuneValue / 1200);
+            const totalDuration = (audioBuffer.duration / pitchFactor) || 1;
+            
+            let lastProgressInt = 0;
+
+            const draw = () => {
+                if (mediaRecorder.state === 'inactive') return; // Stop loop if stopped
+
+                try {
+                    const currentTime = (audioCtx.currentTime - startTime) * pitchFactor;
+                    const progressPct = Math.min((currentTime / totalDuration) * 100, 100);
+                    
+                    const currentProgressInt = Math.floor(progressPct);
+                    if (currentProgressInt > lastProgressInt) {
+                        setRenderProgress(currentProgressInt);
+                        lastProgressInt = currentProgressInt;
+                    }
+
+                    // BG
+                    if (config.visualStyle === 'notebook') {
+                        ctx.fillStyle = '#fffef0';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.lineWidth = 2; ctx.strokeStyle = '#d0dbe5'; 
+                        ctx.beginPath(); for(let y = 60; y < canvas.height; y += 60) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); } ctx.stroke();
+                        ctx.lineWidth = 3; ctx.strokeStyle = '#fca5a5'; ctx.beginPath(); ctx.moveTo(140, 0); ctx.lineTo(140, canvas.height); ctx.stroke();
+                    } else {
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    }
+                    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+                    const currentScene = scenesToRender.find(s => currentTime >= s.startTime && currentTime < (s.startTime + s.duration));
+                    
+                    if (currentScene) {
+                        const assets = assetsCache.current[currentScene.id];
+                        if (assets && assets.drawables) {
+                            // Vector Render
+                            const { drawables, totalLength, contentBounds } = assets;
+                            const contentW = contentBounds.maxX - contentBounds.minX;
+                            const contentH = contentBounds.maxY - contentBounds.minY;
+                            const safeContentW = (contentW > 0) ? contentW : assets.canvasWidth;
+                            const safeContentH = (contentH > 0) ? contentH : assets.canvasHeight;
+                            const targetFillPercentage = 0.85; 
+                            const targetW = canvas.width * targetFillPercentage;
+                            const targetH = canvas.height * targetFillPercentage;
+                            const scaleX = targetW / safeContentW;
+                            const scaleY = targetH / safeContentH;
+                            const combinedScale = Math.min(scaleX, scaleY);
+                            const contentCenterX = contentBounds.minX + (safeContentW / 2);
+                            const contentCenterY = contentBounds.minY + (safeContentH / 2);
+                            const translateX = (canvas.width / 2) - (contentCenterX * combinedScale);
+                            const translateY = (canvas.height / 2) - (contentCenterY * combinedScale);
+
+                            const sceneTime = currentTime - currentScene.startTime;
+                            const drawDuration = currentScene.duration * 0.8; 
+                            const progress = Math.min(Math.max(sceneTime / drawDuration, 0), 1.0);
+                            const lengthToDraw = totalLength * progress;
+
+                            ctx.save();
+                            ctx.translate(translateX, translateY);
+                            ctx.scale(combinedScale, combinedScale);
+                            
+                            let accumulatedLength = 0;
+                            for (const item of drawables) {
+                                if (accumulatedLength + item.length < lengthToDraw) {
+                                    ctx.fillStyle = item.color; ctx.fill(item.path2D);
+                                } else if (accumulatedLength < lengthToDraw) {
+                                    const partialLength = lengthToDraw - accumulatedLength;
+                                    ctx.save(); ctx.setLineDash([partialLength, item.length]);
+                                    ctx.strokeStyle = item.color; ctx.lineWidth = 3.0 / combinedScale; 
+                                    ctx.stroke(item.path2D); ctx.restore();
+                                }
+                                accumulatedLength += item.length;
+                            }
+                            ctx.restore();
+                        } else if (rasterCache.current[currentScene.id]) {
+                            // Raster Fallback
+                            const img = rasterCache.current[currentScene.id];
+                            const canvasAspect = canvas.width / canvas.height;
+                            const imgAspect = img.width / img.height;
+                            let drawW, drawH, drawX, drawY;
+                            const padding = 0.85;
+                            if (imgAspect > canvasAspect) {
+                                drawW = canvas.width * padding; drawH = drawW / imgAspect;
+                                drawX = (canvas.width - drawW) / 2; drawY = (canvas.height - drawH) / 2;
+                            } else {
+                                drawH = canvas.height * padding; drawW = drawH * imgAspect;
+                                drawX = (canvas.width - drawW) / 2; drawY = (canvas.height - drawH) / 2;
+                            }
+                            ctx.save();
+                            if (config.visualStyle === 'notebook') ctx.globalCompositeOperation = 'multiply';
+                            ctx.drawImage(img, drawX, drawY, drawW, drawH);
+                            ctx.restore();
+                        }
+                    }
+
+                    if (logoImg) {
+                        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
+                        const logoSize = Math.min(canvas.width, canvas.height) * 0.12;
+                        const logoAspect = logoImg.width / logoImg.height;
+                        const lW = logoSize * logoAspect; const lH = logoSize;
+                        ctx.drawImage(logoImg, canvas.width - lW - 40, 40, lW, lH);
+                    }
+
+                    if (currentTime < totalDuration + 0.5) {
+                        requestAnimationFrame(draw);
+                    } else {
+                        // Normally source.onended handles stop, but we force check here too
+                        if (mediaRecorder.state === 'recording') {
+                            mediaRecorder.stop();
+                            setRenderProgress(100);
+                        }
+                    }
+                } catch (drawErr) {
+                    console.error("Draw Loop Error:", drawErr);
+                    try { mediaRecorder.stop(); } catch(e){}
+                    reject(drawErr);
+                }
+            };
+            requestAnimationFrame(draw);
+        } catch (initErr) {
+            reject(initErr);
+        }
+      });
+  };
+
+  // --- SAVE TO CLOUD (MANUAL TRIGGER) ---
+  const handleSaveToLibrary = async () => {
+      if (!generatedVideoBlob || !user) return;
+      
+      setIsSaving(true);
+      setError(null);
+      
+      try {
+          const videoTitle = topic.slice(0, 30) || uploadedFile?.name || "New Explainer";
+          const videoId = await initVideoGeneration(user.uid, videoTitle, config.duration);
+          await completeVideoGeneration(videoId, user.uid, generatedVideoBlob);
+          setSaveSuccess(true);
+      } catch (e: any) {
+          console.error("Save failed", e);
+          setError("Failed to save to My Videos: " + e.message);
+      } finally {
+          setIsSaving(false);
+      }
   };
 
   const handleGenerate = useCallback(async () => {
     if (!topic.trim() && !uploadedFile) return;
 
+    // Reset State
     const audioCtx = getAudioContext();
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
+    await unlockAudioContext(audioCtx);
 
     setStatus('scripting');
     setDetailedStatus("");
     setError(null);
     setScenes([]);
     setImages({});
-    setLastRunCost(0);
     assetsCache.current = {};
-    processingPromises.current = {};
-    setFullAudioBuffer(null);
+    rasterCache.current = {};
+    setGeneratedVideoUrl(null);
+    setGeneratedVideoBlob(null);
+    setSaveSuccess(false);
     setFullScriptText('');
     setGeneratedCount(0);
+    setRenderProgress(0);
 
     try {
+      // 1. Script
       const fullScript = await generateScript(
           topic, 
           config.duration,
@@ -724,13 +975,10 @@ export const App: React.FC = () => {
           (msg) => setDetailedStatus(msg)
       );
       
-      if (fullScript.estimatedCost) {
-          setLastRunCost(fullScript.estimatedCost);
-      }
-
       const scriptText = fullScript.scenes.map(s => s.voiceover).join(' ');
       setFullScriptText(scriptText);
       
+      // 2. Audio
       setStatus('audio-gen');
       setDetailedStatus("");
       const audioPromises = fullScript.scenes.map(scene => 
@@ -738,17 +986,13 @@ export const App: React.FC = () => {
       );
       const audioBuffers = await Promise.all(audioPromises);
       
-      // Generate Background Music (procedural)
       let musicBuffer = null;
       if (config.musicStyle !== 'none') {
-         // Generate roughly enough music for the estimated duration + buffer
          const estimatedDur = audioBuffers.reduce((a,b) => a + b.duration, 0) + 10;
          musicBuffer = createProceduralBackgroundMusic(config.musicStyle, estimatedDur, audioCtx);
       }
 
-      // Concatenate and Mix
       const finalAudio = concatenateAudioBuffers(audioBuffers, audioCtx, musicBuffer);
-      setFullAudioBuffer(finalAudio);
 
       let pitchFactor = 1.0;
       if (config.pitch === 'high') pitchFactor = Math.pow(2, 100 / 1200);
@@ -760,12 +1004,9 @@ export const App: React.FC = () => {
       fullScript.scenes.forEach((scriptScene, index) => {
           const audioDur = audioBuffers[index].duration;
           const visualDur = audioDur / pitchFactor; 
-
-          const keywords = scriptScene.visualPrompt.idea;
-
           newScenes.push({
               id: index + 1,
-              visual_idea: keywords, 
+              visual_idea: scriptScene.visualPrompt.idea, 
               gen_prompt: scriptScene.visualPrompt.prompt,
               top_text: scriptScene.visualPrompt.top_text,
               labels: scriptScene.visualPrompt.labels,
@@ -777,14 +1018,27 @@ export const App: React.FC = () => {
 
       setScenes(newScenes);
 
+      // 3. Visuals
       setStatus('visual-gen');
       const initialImages: Record<number, GeneratedImage> = {};
-      newScenes.forEach(s => {
-          initialImages[s.id] = { sceneId: s.id, imageUrl: null, loading: true };
-      });
+      newScenes.forEach(s => { initialImages[s.id] = { sceneId: s.id, imageUrl: null, loading: true }; });
       setImages(initialImages);
 
-      await processSceneQueue(newScenes);
+      const generatedImagesMap = await processSceneQueue(newScenes);
+
+      // 4. Preload Assets
+      setStatus('rendering');
+      setDetailedStatus("Preparing assets (0%)...");
+      await preloadAssets(newScenes, generatedImagesMap);
+
+      // 5. Render to Blob (Client Side only)
+      setDetailedStatus("Rendering final video...");
+      const videoBlob = await renderVideoToBlob(newScenes, finalAudio);
+      const videoUrl = URL.createObjectURL(videoBlob);
+      
+      setGeneratedVideoBlob(videoBlob);
+      setGeneratedVideoUrl(videoUrl);
+
       setStatus('complete');
 
     } catch (err: any) {
@@ -792,16 +1046,14 @@ export const App: React.FC = () => {
       setError(err.message || "Generation failed.");
       setStatus('error');
     }
-  }, [topic, uploadedFile, config]);
+  }, [topic, uploadedFile, config, status, user]);
 
   const handleRegenerateImage = useCallback(async (sceneId: number, prompt: string, topText?: string, labels?: string[]) => {
     delete assetsCache.current[sceneId];
-    delete processingPromises.current[sceneId];
+    delete rasterCache.current[sceneId];
+    
+    setImages(prev => ({ ...prev, [sceneId]: { ...prev[sceneId], loading: true, error: undefined } }));
 
-    setImages(prev => ({
-      ...prev,
-      [sceneId]: { ...prev[sceneId], loading: true, error: undefined }
-    }));
     try {
       const variedPrompt = `${prompt}, variation ${Date.now()}`;
       const url = await generateSceneImage(
@@ -812,263 +1064,36 @@ export const App: React.FC = () => {
           config.visualStyle,
           (msg) => console.log(msg) 
       );
-      setImages(prev => ({
-        ...prev,
-        [sceneId]: { sceneId, imageUrl: url, loading: false }
-      }));
+      setImages(prev => ({ ...prev, [sceneId]: { sceneId, imageUrl: url, loading: false } }));
+      
+      // Auto-update assets cache for next potential render
+      const img = new Image(); img.crossOrigin = "anonymous"; img.src = url;
+      img.onload = async () => {
+          rasterCache.current[sceneId] = img;
+          try { assetsCache.current[sceneId] = await processSceneImage(img); } catch(e){}
+      };
     } catch (err) {
-      setImages(prev => ({
-        ...prev,
-        [sceneId]: { ...prev[sceneId], loading: false, error: "Retry failed" }
-      }));
+      setImages(prev => ({ ...prev, [sceneId]: { ...prev[sceneId], loading: false, error: "Retry failed" } }));
     }
   }, [config.aspectRatio, config.visualStyle]);
 
-  const handleRenderVideo = async () => {
-    const audioCtx = getAudioContext();
-    if (!audioCtx || !fullAudioBuffer) return;
+  if (authLoading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-zinc-500 font-bold animate-pulse">Checking credentials...</p>
+            </div>
+        </div>
+      );
+  }
 
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
+  if (!user) {
+    return <LandingPage onGetStarted={handleLogin} />;
+  }
 
-    setIsRendering(true);
-    isRenderingRef.current = true;
-    setRenderProgress(0);
-
-    const pendingScenIds = scenes.map(s => s.id).filter(id => !assetsCache.current[id]);
-    if (pendingScenIds.length > 0) {
-        const activePromises = pendingScenIds
-            .map(id => processingPromises.current[id])
-            .filter(p => !!p); 
-        await Promise.all(activePromises);
-    }
-
-    let renderW = 1080;
-    let renderH = 1080;
-    if (config.aspectRatio === '16:9') { renderW = 1920; renderH = 1080; }
-    else if (config.aspectRatio === '9:16') { renderW = 1080; renderH = 1920; }
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = renderW;
-    canvas.height = renderH;
-    const ctx = canvas.getContext('2d', { alpha: false }); 
-    if (!ctx) return;
-    
-    let logoImg: HTMLImageElement | null = null;
-    if (config.logoData) {
-        logoImg = new Image();
-        logoImg.src = config.logoData;
-        await new Promise(r => { logoImg!.onload = r; logoImg!.onerror = r; });
-    }
-
-    const dest = audioCtx.createMediaStreamDestination();
-    const canvasStream = canvas.captureStream(30); 
-    
-    const combinedStream = new MediaStream([
-      ...canvasStream.getVideoTracks(),
-      ...dest.stream.getAudioTracks()
-    ]);
-
-    const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
-    const mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
-
-    if (!mimeType) {
-        setError("Your browser does not support MediaRecorder.");
-        setIsRendering(false);
-        isRenderingRef.current = false;
-        return;
-    }
-
-    const mediaRecorder = new MediaRecorder(combinedStream, {
-      mimeType: mimeType,
-      videoBitsPerSecond: 12000000 
-    });
-
-    const chunks: Blob[] = [];
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `explain-video-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setIsRendering(false);
-      isRenderingRef.current = false;
-    };
-
-    mediaRecorder.start();
-
-    const source = audioCtx.createBufferSource();
-    source.buffer = fullAudioBuffer;
-    
-    let detuneValue = 0;
-    if (config.pitch === 'high') detuneValue = 100;
-    if (config.pitch === 'low') detuneValue = -100;
-    source.detune.value = detuneValue;
-    source.connect(dest);
-    source.start();
-
-    const startTime = audioCtx.currentTime;
-    const pitchFactor = Math.pow(2, detuneValue / 1200);
-    const totalDuration = (fullAudioBuffer.duration / pitchFactor) || 1;
-
-    // --- RENDERER STATE ---
-    let currentCacheSceneId = -1;
-    
-    const drawFrame = () => {
-        if (!isRenderingRef.current) {
-            try { mediaRecorder.stop(); source.stop(); } catch(e) {}
-            return;
-        }
-
-        const currentTime = (audioCtx.currentTime - startTime) * pitchFactor;
-        const totalProgress = Math.min((currentTime / totalDuration) * 100, 100);
-        setRenderProgress(Math.round(totalProgress) || 0);
-
-        // CLEAR CANVAS WITH CORRECT BACKGROUND
-        if (config.visualStyle === 'notebook') {
-             // Paper base
-            ctx.fillStyle = '#fffef0';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw Lines
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = '#d0dbe5'; // Light blue lines
-            const lineSpacing = 60; // Adjust for resolution
-            
-            ctx.beginPath();
-            for(let y = lineSpacing; y < canvas.height; y += lineSpacing) {
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvas.width, y);
-            }
-            ctx.stroke();
-
-            // Margin Line
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#fca5a5'; // Red/Pink margin
-            ctx.beginPath();
-            const marginX = 140;
-            ctx.moveTo(marginX, 0);
-            ctx.lineTo(marginX, canvas.height);
-            ctx.stroke();
-
-        } else {
-            // Standard Whiteboard
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-        
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        const currentScene = scenes.find(s => currentTime >= s.startTime && currentTime < (s.startTime + s.duration));
-        
-        if (currentScene && assetsCache.current[currentScene.id]) {
-            const assets = assetsCache.current[currentScene.id];
-            const { drawables, totalLength, contentBounds } = assets;
-            
-            // --- AUTO-ZOOM CALCULATION ---
-            // Calculate content width/height based on actual ink bounds
-            const contentW = contentBounds.maxX - contentBounds.minX;
-            const contentH = contentBounds.maxY - contentBounds.minY;
-
-            // Fallback to canvas dimensions if bounds are invalid (empty scene)
-            const safeContentW = (contentW > 0) ? contentW : assets.canvasWidth;
-            const safeContentH = (contentH > 0) ? contentH : assets.canvasHeight;
-
-            // Target: Fill 85% of the screen
-            const targetFillPercentage = 0.85; 
-            const targetW = canvas.width * targetFillPercentage;
-            const targetH = canvas.height * targetFillPercentage;
-
-            // Compute Scale
-            // We find the scale factor that makes the content fit into the 85% box.
-            const scaleX = targetW / safeContentW;
-            const scaleY = targetH / safeContentH;
-            const combinedScale = Math.min(scaleX, scaleY);
-
-            // Compute Center Offset
-            // Find the center of the content in its original coordinate space
-            const contentCenterX = contentBounds.minX + (safeContentW / 2);
-            const contentCenterY = contentBounds.minY + (safeContentH / 2);
-
-            // We want (contentCenterX, contentCenterY) * combinedScale to align with (canvas.width/2, canvas.height/2)
-            const translateX = (canvas.width / 2) - (contentCenterX * combinedScale);
-            const translateY = (canvas.height / 2) - (contentCenterY * combinedScale);
-
-            if (currentScene.id !== currentCacheSceneId) {
-                currentCacheSceneId = currentScene.id;
-            }
-
-            // --- ANIMATION LOGIC (Continuous Flow) ---
-            const sceneTime = currentTime - currentScene.startTime;
-            const sceneDuration = currentScene.duration;
-            
-            // Finish drawing at 80% (4/5) of scene time to allow viewer to see full image briefly
-            const drawDuration = sceneDuration * 0.8; 
-            const progress = Math.min(Math.max(sceneTime / drawDuration, 0), 1.0);
-            
-            // Map progress to Total Length of strokes
-            const lengthToDraw = totalLength * progress;
-
-            ctx.save();
-            ctx.translate(translateX, translateY);
-            ctx.scale(combinedScale, combinedScale);
-            
-            let accumulatedLength = 0;
-
-            for (const item of drawables) {
-                if (accumulatedLength + item.length < lengthToDraw) {
-                    // Fully drawn items: Use FILL to ensure solidity and clean text
-                    // We forced type='fill' in processSceneImage to ensure colors are respected
-                    ctx.fillStyle = item.color;
-                    ctx.fill(item.path2D);
-                } else if (accumulatedLength < lengthToDraw) {
-                    // Partially drawn item (Animation head)
-                    const partialLength = lengthToDraw - accumulatedLength;
-                    
-                    // We animate using Stroke to simulate the pen movement, even if the final result is a fill.
-                    // VISUAL FIX: Use a thicker stroke (2-3px) so the "drawing" action is visible.
-                    ctx.save();
-                    ctx.setLineDash([partialLength, item.length]);
-                    ctx.strokeStyle = item.color;
-                    ctx.lineWidth = 3.0 / combinedScale; // Inverse scale to keep line width constant on screen
-                    ctx.stroke(item.path2D);
-                    ctx.restore();
-                }
-                accumulatedLength += item.length;
-            }
-
-            ctx.restore();
-        }
-
-        if (logoImg) {
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = 1.0;
-            const logoSize = Math.min(canvas.width, canvas.height) * 0.12;
-            const logoAspect = logoImg.width / logoImg.height;
-            const lW = logoSize * logoAspect;
-            const lH = logoSize;
-            const pad = 40;
-            ctx.drawImage(logoImg, canvas.width - lW - pad, pad, lW, lH);
-        }
-
-        if (currentTime < totalDuration + 1.0) { 
-            requestAnimationFrame(drawFrame);
-        } else {
-            if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-            setRenderProgress(100);
-        }
-    };
-
-    requestAnimationFrame(drawFrame);
-  };
-
-  if (!showDashboard) {
-    return <LandingPage onGetStarted={() => setShowDashboard(true)} />;
+  if (showDashboard) {
+      return <Dashboard userId={user.uid} onBack={() => setShowDashboard(false)} />;
   }
 
   return (
@@ -1084,8 +1109,16 @@ export const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-4">
-             <div className="hidden sm:flex flex-col items-end mr-2">
-                <span className="text-sm font-bold text-zinc-900">{user.displayName}</span>
+             <button
+                onClick={() => setShowDashboard(true)}
+                disabled={status === 'rendering'}
+                className={`hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-colors border border-transparent ${status === 'rendering' ? 'text-gray-400 cursor-not-allowed' : 'text-zinc-600 hover:text-orange-600 hover:bg-orange-50 hover:border-orange-100'}`}
+             >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                My Projects
+             </button>
+             <div className="hidden sm:flex flex-col items-end mr-2 border-l border-zinc-100 pl-4">
+                <span className="text-sm font-bold text-zinc-900">{user.displayName || "Creator"}</span>
                 <span className="text-xs text-gray-500">{user.email}</span>
              </div>
              {user.photoURL ? (
@@ -1098,7 +1131,7 @@ export const App: React.FC = () => {
              <button 
                 onClick={handleLogout}
                 className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                title="Back to Home"
+                title="Log Out"
              >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
              </button>
@@ -1248,13 +1281,22 @@ export const App: React.FC = () => {
                     : 'bg-indigo-600 hover:bg-indigo-700'}
                 `}
               >
-                {status === 'scripting' && "Generating Script..."}
-                {status === 'audio-gen' && "Synthesizing Voice..."}
-                {status === 'visual-gen' && `Creating Art (${generatedCount}/${scenes.length})...`}
+                {status === 'scripting' && "Step 1/4: Generating Script..."}
+                {status === 'audio-gen' && "Step 2/4: Synthesizing Voice..."}
+                {status === 'visual-gen' && `Step 3/4: Drawing (${generatedCount}/${scenes.length})...`}
+                {status === 'rendering' && `Step 4/4: Rendering Video (${renderProgress}%)...`}
                 {status === 'idle' && 'Generate Video'}
-                {status === 'complete' && 'New Project'}
+                {status === 'complete' && 'Create Another Video'}
                 {status === 'error' && 'Try Again'}
             </button>
+            
+            {status === 'rendering' && (
+                <div className="mt-4 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded animate-pulse">
+                    <p className="font-bold">⚠️ Rendering in progress</p>
+                    <p className="text-sm">Please do not switch tabs or minimize the browser. The video is being drawn in real-time.</p>
+                </div>
+            )}
+
             {detailedStatus && (
                <div className="mt-2 p-3 bg-yellow-50 text-yellow-700 rounded text-xs border border-yellow-100 animate-pulse font-mono">
                   {detailedStatus}
@@ -1265,35 +1307,69 @@ export const App: React.FC = () => {
 
           {/* Preview */}
           <div className="lg:col-span-8">
-             {status === 'complete' && scenes.length > 0 ? (
+             {(status === 'complete' || status === 'rendering' || scenes.length > 0) ? (
                 <div className="space-y-6">
                    <div className="flex items-center justify-between pb-4 border-b border-gray-200">
                       <div className="flex items-baseline gap-4">
-                        <h2 className="text-xl font-bold">Preview</h2>
-                        {lastRunCost > 0 && (
-                            <span className="text-xs font-mono bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200">
-                                Real Cost: ${lastRunCost.toFixed(3)}
-                            </span>
-                        )}
-                      </div>
-                      <div className='flex items-center gap-4'>
-                          {isRendering && <span className="text-xs text-red-500 font-bold animate-pulse">⚠️ DO NOT SWITCH TABS!</span>}
-                          <button
-                            onClick={handleRenderVideo}
-                            disabled={isRendering}
-                            className={`inline-flex items-center rounded-lg px-4 py-2 text-sm font-bold transition-all duration-200 ${isRendering ? 'bg-gray-100 text-gray-400' : 'bg-green-600 text-white hover:bg-green-700 shadow-md'}`}
-                          >
-                            {isRendering ? `Rendering... ${renderProgress}%` : 'Download .MP4'}
-                          </button>
+                        <h2 className="text-xl font-bold">
+                            {status === 'complete' ? 'Preview' : 'Processing...'}
+                        </h2>
                       </div>
                    </div>
 
-                   <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6">
-                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Script</h3>
-                      <p className="text-gray-700 leading-relaxed text-sm font-sans">{fullScriptText}</p>
-                   </div>
+                   {/* FINAL VIDEO PLAYER */}
+                   {generatedVideoUrl && status === 'complete' && (
+                       <div className="bg-zinc-900 rounded-xl overflow-hidden shadow-2xl ring-4 ring-green-500/20 mb-8 p-1">
+                           <video 
+                                src={generatedVideoUrl} 
+                                controls 
+                                autoPlay 
+                                className="w-full h-auto rounded-lg"
+                           />
+                           <div className="p-3 bg-zinc-800 flex justify-between items-center text-white">
+                                <div className="flex items-center gap-4">
+                                    <a 
+                                        href={generatedVideoUrl} 
+                                        download={`explain-video-${Date.now()}.webm`}
+                                        className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded text-xs font-bold transition-colors border border-zinc-600"
+                                    >
+                                        ⬇ Download MP4
+                                    </a>
+                                    
+                                    {!saveSuccess ? (
+                                        <button 
+                                            onClick={handleSaveToLibrary}
+                                            disabled={isSaving}
+                                            className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-xs font-bold transition-colors flex items-center gap-2"
+                                        >
+                                            {isSaving ? (
+                                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                                            )}
+                                            Save to My Videos
+                                        </button>
+                                    ) : (
+                                        <span className="text-green-400 text-xs font-bold flex items-center gap-1">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                            Saved to Dashboard
+                                        </span>
+                                    )}
+                                </div>
+                           </div>
+                       </div>
+                   )}
+
+                   {/* Script Preview */}
+                   {fullScriptText && (
+                       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6">
+                          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Script</h3>
+                          <p className="text-gray-700 leading-relaxed text-sm font-sans">{fullScriptText}</p>
+                       </div>
+                   )}
                    
-                   <div className="grid grid-cols-1 gap-6">
+                   {/* Scene Cards Grid */}
+                   <div className="grid grid-cols-1 gap-6 opacity-75 hover:opacity-100 transition-opacity">
                     {scenes.map((scene) => (
                       <SceneCard 
                         key={scene.id} 
@@ -1303,7 +1379,7 @@ export const App: React.FC = () => {
                         error={images[scene.id]?.error}
                         aspectRatio={config.aspectRatio}
                         visualStyle={config.visualStyle}
-                        onRegenerate={() => handleRegenerateImage(scene.id, scene.gen_prompt, scene.top_text, scene.labels)}
+                        onRegenerate={(id, prompt, topText, labels) => handleRegenerateImage(id, prompt, topText, labels)}
                       />
                     ))}
                   </div>

@@ -11,9 +11,9 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const SCRIPT_MODEL = "gemini-3-pro-preview"; 
 const COST_SCRIPT_PER_RUN = 0.004; // Avg input/output tokens for a script
 
-// IMAGE: Gemini 2.5 Flash Image
-const IMAGE_MODEL = "gemini-2.5-flash-image"; 
-const COST_IMAGE_PER_UNIT = 0.004; // Exact price per image
+// IMAGE: Imagen 4.0 Fast
+const IMAGE_MODEL = "imagen-4.0-generate-001"; 
+const COST_IMAGE_PER_UNIT = 0.01; // Target per-image cost
 
 // AUDIO: Gemini Flash TTS
 // NOTE: 'gemini-2.5-flash-preview-tts' is the dedicated TTS model. 
@@ -209,96 +209,46 @@ export const generateScript = async (
 export const generateSceneImage = async (prompt: string, topText: string, labels: string[] | undefined, aspectRatio: AspectRatio, style: VisualStyle, onStatusUpdate?: (status: string) => void): Promise<string> => {
   return callWithRetry(async () => {
     
-    const labelString = labels && labels.length > 0 ? labels.join(", ") : "";
+    const labelString = labels && labels.length > 0 ? `Labels: "${labels.join(", ")}"` : "";
 
-    let dimensionKeywords = "Landscape 16:9";
-    let safeZone = "";
-    if (aspectRatio === '9:16') {
-        dimensionKeywords = "Portrait 9:16";
-        safeZone = "Keep subject CENTERED and TALL. Leave margins empty.";
-    }
-    if (aspectRatio === '1:1') dimensionKeywords = "Square 1:1";
-
-    let illustrationStyle = "";
+    // Optimized Prompting for Imagen 4
+    // We use descriptive keywords rather than conversational instructions for better diffusion results.
+    let finalPrompt = "";
     
     if (style === 'notebook') {
-        illustrationStyle = `
-          You are a student doodling in a notebook.
-          
-          TASK: Draw a sketch for: "${prompt}"
-          
-          STYLE GUIDE (STRICT):
-          - STYLE: Ballpoint pen sketch. Casual, handwritten, student aesthetic.
-          - MEDIUM: Blue Ballpoint Ink (#0000AA). 
-          - ACCENTS: Red Pen (#CC0000) for corrections/arrows. Yellow Highlighter (#FFFF00) for emphasis.
-          - LINEWORK: Sketchy, overlapping lines. Doodles.
-          - BACKGROUND: PURE WHITE (#FFFFFF). Do NOT draw the notebook lines. We will add the paper texture later.
-          - TEXT: "${topText}" -> Handwritten cursive or print (pen style).
-          
-          COMPOSITION:
-          - Center the doodle.
-          - Use arrows, stars, and circles to annotate.
-          
-          ${dimensionKeywords}.
-          ${safeZone}
-        `;
+        finalPrompt = `(Ballpoint pen sketch:1.3) of ${prompt}. Blue ink on white paper. 
+        Loose messy lines, student doodle aesthetic. 
+        Text: "${topText}" written in messy cursive handwriting. 
+        ${labelString}. 
+        White notebook paper background, slightly wrinkled texture. High contrast.`;
     } else {
-        // Default "Sketch-note" Infographic Style (Whiteboard)
-        illustrationStyle = `
-          You are a professional whiteboard animation illustrator.
-          
-          TASK: Draw a scene for the prompt: "${prompt}"
-          
-          STYLE GUIDE (STRICT):
-          - STYLE: "Sketch-note" infographic aesthetic. Hand-drawn digital marker style. High quality doodle art.
-          - LINEWORK: Black ink outlines (#000000). Confident, sketchy lines with variable width (like a marker).
-          - COLORING: Use specific vibrant accent colors for fills: Cyan (#06B6D4), Purple (#9333EA), Orange (#F97316), Green (#22C55E), Yellow (#EAB308), Red (#EF4444).
-          - LAYOUT: **MACRO CLOSE-UP**. The main subject must occupy **90%** of the canvas.
-          - COMPOSITION: **FILL THE FRAME**. Do NOT leave large empty white spaces. This is a zoom-in shot.
-          - BACKGROUND: PURE SOLID WHITE (#FFFFFF). No paper texture.
-          - NO BORDERS: Do NOT draw a frame or border around the image.
-          - CHARACTERS: Cute, expressive, slightly "chibi" or "doodle" style stick figures.
-          - TEXT: "${topText}" -> HAND-LETTERED bold marker font. Legible.
-          
-          COMPOSITION:
-          - Subject centered but LARGE.
-          - Clear separation between text and visual.
-          - LABELS: "${labelString}" -> If present, write them near objects using the same marker font.
-          
-          ${dimensionKeywords}.
-          ${safeZone}
-        `;
+        // Standard "Explain" Whiteboard Look
+        finalPrompt = `(Whiteboard animation style:1.4) marker drawing of ${prompt}. 
+        Thick black ink outlines, vector art style, simple infographic aesthetic. 
+        Colors: Cyan, Orange, Purple highlights. 
+        Text: "${topText}" written in bold hand-lettered marker font. 
+        ${labelString}.
+        Pure white background, no shading, flat design, expressive stick figures, macro view.`;
     }
 
-    // STRICT COST CONTROL:
-    // Using 'gemini-2.5-flash-image' ensures we hit the "Fast" pricing tier (~$0.004).
-    const response = await ai.models.generateContent({
+    // Using Imagen 4 for high-quality, fast generation
+    const response = await ai.models.generateImages({
       model: IMAGE_MODEL,
-      contents: {
-        parts: [{ text: illustrationStyle }]
-      },
+      prompt: finalPrompt,
       config: {
-        imageConfig: {
-            aspectRatio: aspectRatio,
-        }
+        numberOfImages: 1, // Batch size 1 to keep per-scene cost low
+        aspectRatio: aspectRatio,
+        outputMimeType: 'image/jpeg',
       }
     });
 
-    let base64 = null;
-    if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                base64 = part.inlineData.data;
-                break;
-            }
-        }
-    }
+    const base64 = response.generatedImages?.[0]?.image?.imageBytes;
     
-    if (!base64) throw new Error("No image data found from Gemini Flash Image");
+    if (!base64) throw new Error("No image data found from Imagen");
     
     return `data:image/jpeg;base64,${base64}`;
 
-  }, 5, 1000, onStatusUpdate); 
+  }, 5, 2000, onStatusUpdate); 
 };
 
 export const generateSpeech = async (text: string, voiceName: VoiceName, audioCtx: AudioContext, onStatusUpdate?: (status: string) => void): Promise<AudioBuffer> => {

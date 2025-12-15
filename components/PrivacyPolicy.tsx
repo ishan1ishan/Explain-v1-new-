@@ -1,9 +1,22 @@
-
 import React from 'react';
 
 interface PrivacyPolicyProps {
   onBack: () => void;
 }
+
+const Section: React.FC<{ number: string; title: string; children: React.ReactNode }> = ({ number, title, children }) => (
+  <div className="bg-white border-2 border-zinc-100 p-8 shadow-sm hover:shadow-md transition-shadow duration-300">
+      <div className="flex items-baseline gap-4 mb-6 pb-4 border-b border-zinc-50">
+          <span className="font-mono text-4xl text-orange-200 font-bold select-none">
+            {number.length === 1 ? `0${number}` : number}
+          </span>
+          <h2 className="text-2xl font-display font-bold text-zinc-900">{title}</h2>
+      </div>
+      <div className="text-lg leading-relaxed text-zinc-600">
+          {children}
+      </div>
+  </div>
+);
 
 const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
   const effectiveDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -168,26 +181,56 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
         </main>
 
         <footer className="bg-zinc-900 text-[#FAFAF9] py-12 px-6 border-t-2 border-zinc-900 mt-12">
-            <div className="max-w-7xl mx-auto text-center">
-                <p className="text-zinc-500 text-sm font-mono">
-                  © {new Date().getFullYear()} Explain Ltd. All rights reserved.
+            <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
+                
+                {/* Big Branding */}
+                <h1 className="text-[18vw] lg:text-[220px] leading-[0.8] font-display font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-700 select-none mb-8">
+                Explain.
+                </h1>
+
+                {/* Description */}
+                <p className="text-lg md:text-xl text-zinc-400 max-w-2xl font-light mb-12 leading-relaxed">
+                    The anti-PowerPoint tool for the modern creator. Turn complex ideas into clear, engaging visual narratives in minutes with generative AI.
                 </p>
+
+                {/* Links & Contact */}
+                <div className="w-full max-w-4xl border-t border-zinc-800 pt-12 flex flex-col md:flex-row justify-between items-center gap-8">
+                    
+                    {/* Socials */}
+                    <div className="flex gap-4">
+                        <a href="https://x.com/explainltd" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                            <svg className="w-5 h-5 fill-current text-white group-hover:text-white" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                        </a>
+                        <a href="https://instagram.com/explain.ltd" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                            <svg className="w-6 h-6 stroke-current text-white group-hover:text-white" fill="none" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+                        </a>
+                        <a href="https://youtube.com/@Explain-ltd" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                            <svg className="w-6 h-6 fill-current text-white group-hover:text-white" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"></path></svg>
+                        </a>
+                        <a href="https://www.facebook.com/share/1aQRVSvT2s/" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                            <svg className="w-6 h-6 fill-current text-white group-hover:text-white" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"></path></svg>
+                        </a>
+                    </div>
+
+                    {/* Email */}
+                    <div>
+                         <a href="mailto:ceo@explain.ltd" className="flex items-center gap-3 text-white hover:text-orange-500 transition-colors font-display font-bold text-xl">
+                            <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            </div>
+                            ceo@explain.ltd
+                         </a>
+                    </div>
+                </div>
+
+                {/* Copyright */}
+                <div className="mt-16 text-zinc-600 font-mono text-xs">
+                    © {new Date().getFullYear()} Explain Ltd. All rights reserved.
+                </div>
             </div>
         </footer>
     </div>
   );
 };
-
-const Section: React.FC<{ number: string; title: string; children: React.ReactNode }> = ({ number, title, children }) => (
-    <div className="bg-white border-2 border-zinc-900 p-8 shadow-[6px_6px_0px_0px_#000] hover:shadow-[8px_8px_0px_0px_#ea580c] transition-shadow duration-300">
-        <h2 className="text-2xl font-display font-bold mb-6 flex items-baseline gap-3">
-            <span className="text-4xl text-zinc-200 font-black select-none">{number}.</span>
-            {title}
-        </h2>
-        <div className="text-base leading-relaxed border-t border-zinc-100 pt-4">
-            {children}
-        </div>
-    </div>
-);
 
 export default PrivacyPolicy;

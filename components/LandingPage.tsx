@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import PrivacyPolicy from './PrivacyPolicy';
 import PricingPage from './PricingPage';
@@ -194,7 +195,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
       </nav>
 
       {/* Hero Section */}
-      <header className="pt-32 pb-24 px-6 relative z-10 overflow-hidden">
+      <header className="pt-32 pb-24 px-6 relative z-10">
         <div className="max-w-5xl mx-auto flex flex-col items-center text-center gap-12">
           
           <div className="space-y-8 flex flex-col items-center max-w-4xl mx-auto">
@@ -214,7 +215,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
               Turn dense documents into captivating whiteboard videos in seconds. No studios. No animators. Just pure explanation.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 pt-6">
+            <div className="flex flex-col sm:flex-row gap-4 pt-6 z-20">
               <button onClick={handleCtaClick} className="px-10 py-5 bg-zinc-900 text-white text-xl font-bold border-2 border-zinc-900 shadow-[6px_6px_0px_0px_#ea580c] hover:shadow-[2px_2px_0px_0px_#ea580c] hover:translate-x-[4px] hover:translate-y-[4px] transition-all">
                 Start Creating
               </button>
@@ -234,7 +235,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
           </div>
 
           {/* Hero Visual */}
-          <div className="relative w-full max-w-4xl mt-8 mx-auto">
+          <div className="relative w-full max-w-4xl mt-8 mx-auto z-10">
             <div className="absolute -top-12 -right-12 w-64 h-64 bg-yellow-300 rounded-full blur-3xl opacity-30 mix-blend-multiply animate-pulse"></div>
             <div className="absolute -bottom-12 -left-12 w-64 h-64 bg-orange-300 rounded-full blur-3xl opacity-30 mix-blend-multiply animate-pulse delay-1000"></div>
             
@@ -347,307 +348,153 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
       <section id="pricing" className="py-24 px-6 bg-[#FAFAF9] border-t-2 border-zinc-900">
         <div className="max-w-[1600px] mx-auto text-center">
           <h2 className="text-4xl md:text-6xl font-display font-bold mb-6 text-zinc-900">
-            Plans that scale with your <br/> ambition.
+            Simple, Transparent Pricing.
           </h2>
+          <p className="text-xl text-zinc-600 max-w-2xl mx-auto mb-16">
+             We believe in giving you everything you need to succeed, without the confusing tiers.
+          </p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mt-16 text-left">
-            {/* Starter ($24) */}
-            <div className="bg-white border-2 border-zinc-900 p-6 shadow-[6px_6px_0px_0px_#52525b] flex flex-col hover:-translate-y-1 transition-transform">
-              <div className="mb-4"><span className="px-2 py-1 bg-zinc-100 border border-zinc-900 text-xs font-bold uppercase text-zinc-700">Starter</span></div>
-              <h3 className="text-xl font-display font-bold mb-2">Basic</h3>
-              <div className="mb-6">
-                <span className="text-4xl font-display font-bold tracking-tighter">$24</span>
-                <span className="text-zinc-500 text-sm">/mo</span>
-              </div>
-              <ul className="space-y-3 mb-8 flex-1 text-sm font-medium text-zinc-600">
-                <li className="flex items-start"><span className="mr-2 text-zinc-600">✓</span> 10 Mins Video / mo</li>
-                <li className="flex items-start"><span className="mr-2 text-zinc-600">✓</span> 1080p HD</li>
-                <li className="flex items-start"><span className="mr-2 text-zinc-600">✓</span> Unlimited Languages</li>
-                <li className="flex items-start"><span className="mr-2 text-zinc-600">✓</span> Unlimited Styles</li>
-                <li className="flex items-start"><span className="mr-2 text-zinc-600">✓</span> Commercial Rights</li>
-              </ul>
-              <button onClick={handleCtaClick} className="w-full py-3 border-2 border-zinc-900 font-bold hover:bg-zinc-100 transition shadow-[2px_2px_0px_0px_#000]">Choose Basic</button>
-            </div>
-
-            {/* Growth ($49) */}
-            <div className="bg-white border-2 border-zinc-900 p-6 shadow-[6px_6px_0px_0px_#2563eb] flex flex-col hover:-translate-y-1 transition-transform">
-              <div className="mb-4"><span className="px-2 py-1 bg-blue-100 border border-zinc-900 text-xs font-bold uppercase text-blue-900">Growth</span></div>
-              <h3 className="text-xl font-display font-bold mb-2 text-blue-900">Pro</h3>
-              <div className="mb-6">
-                <span className="text-4xl font-display font-bold tracking-tighter">$49</span>
-                <span className="text-zinc-500 text-sm">/mo</span>
-              </div>
-              <ul className="space-y-3 mb-8 flex-1 text-sm font-medium text-zinc-600">
-                <li className="flex items-start"><span className="mr-2 text-blue-600">✓</span> 25 Mins Video / mo</li>
-                <li className="flex items-start"><span className="mr-2 text-blue-600">✓</span> No Watermark</li>
-                <li className="flex items-start"><span className="mr-2 text-blue-600">✓</span> Unlimited Languages</li>
-                <li className="flex items-start"><span className="mr-2 text-blue-600">✓</span> Unlimited Styles</li>
-                <li className="flex items-start"><span className="mr-2 text-blue-600">✓</span> Priority Render</li>
-              </ul>
-              <button onClick={handleCtaClick} className="w-full py-3 border-2 border-zinc-900 font-bold hover:bg-blue-50 transition shadow-[2px_2px_0px_0px_#2563eb]">Choose Pro</button>
-            </div>
-
-            {/* Power User ($99) */}
-            <div className="bg-zinc-900 text-white border-2 border-zinc-900 p-6 shadow-[10px_10px_0px_0px_#ea580c] relative flex flex-col hover:-translate-y-1 transition-transform">
-              <div className="absolute top-0 right-0 bg-orange-500 text-white text-xs font-bold px-3 py-1 border-l-2 border-b-2 border-zinc-900">POPULAR</div>
-              <div className="mb-4"><span className="px-2 py-1 bg-orange-500 border border-white text-xs font-bold uppercase">Creator</span></div>
-              <h3 className="text-xl font-display font-bold mb-2 text-orange-500">Power User</h3>
-              <div className="mb-6">
-                <span className="text-4xl font-display font-bold tracking-tighter">$99</span>
-                <span className="text-zinc-400 text-sm">/mo</span>
-              </div>
-              <ul className="space-y-3 mb-8 flex-1 text-sm font-medium text-zinc-300">
-                <li className="flex items-start"><span className="mr-2 text-orange-500">✓</span> 60 Mins Video / mo</li>
-                <li className="flex items-start"><span className="mr-2 text-orange-500">✓</span> 4K Ultra HD</li>
-                <li className="flex items-start"><span className="mr-2 text-orange-500">✓</span> Unlimited Languages</li>
-                <li className="flex items-start"><span className="mr-2 text-orange-500">✓</span> Unlimited Styles</li>
-                <li className="flex items-start"><span className="mr-2 text-orange-500">✓</span> Script Editor Mode</li>
-                <li className="flex items-start"><span className="mr-2 text-orange-500">✓</span> Background Music</li>
-                <li className="flex items-start"><span className="mr-2 text-orange-500">✓</span> Speed Control</li>
-              </ul>
-              <button onClick={handleCtaClick} className="w-full py-3 bg-orange-600 border-2 border-white font-bold hover:bg-orange-700 transition shadow-[2px_2px_0px_0px_#fff]">Get Creator</button>
-            </div>
-
-            {/* Agency ($297) */}
-            <div className="bg-white border-2 border-zinc-900 p-6 shadow-[6px_6px_0px_0px_#9333ea] flex flex-col hover:-translate-y-1 transition-transform">
-              <div className="mb-4"><span className="px-2 py-1 bg-purple-100 border border-zinc-900 text-xs font-bold uppercase text-purple-900">Agency</span></div>
-              <h3 className="text-xl font-display font-bold mb-2 text-purple-900">Enterprise</h3>
-              <div className="mb-6">
-                <span className="text-4xl font-display font-bold tracking-tighter">$297</span>
-                <span className="text-zinc-500 text-sm">/mo</span>
-              </div>
-              <ul className="space-y-3 mb-8 flex-1 text-sm font-medium text-zinc-600">
-                <li className="flex items-start"><span className="mr-2 text-purple-600">✓</span> 200 Mins Video / mo</li>
-                <li className="flex items-start"><span className="mr-2 text-purple-600">✓</span> Unlimited Languages</li>
-                <li className="flex items-start"><span className="mr-2 text-purple-600">✓</span> Unlimited Styles</li>
-                <li className="flex items-start"><span className="mr-2 text-purple-600">✓</span> API Access</li>
-                <li className="flex items-start"><span className="mr-2 text-purple-600">✓</span> Dedicated Support</li>
-              </ul>
-              <button onClick={handleCtaClick} className="w-full py-3 border-2 border-zinc-900 font-bold hover:bg-purple-50 transition shadow-[2px_2px_0px_0px_#9333ea]">Contact Sales</button>
-            </div>
-
-            {/* Network ($999) */}
-            <div className="bg-white border-2 border-zinc-900 p-6 shadow-[6px_6px_0px_0px_#dc2626] flex flex-col hover:-translate-y-1 transition-transform">
-              <div className="mb-4"><span className="px-2 py-1 bg-red-100 border border-zinc-900 text-xs font-bold uppercase text-red-900">Network</span></div>
-              <h3 className="text-xl font-display font-bold mb-2 text-red-900">Partner</h3>
-              <div className="mb-6">
-                <span className="text-4xl font-display font-bold tracking-tighter">$999</span>
-                <span className="text-zinc-500 text-sm">/mo</span>
-              </div>
-              <ul className="space-y-3 mb-8 flex-1 text-sm font-medium text-zinc-600">
-                <li className="flex items-start"><span className="mr-2 text-red-600">✓</span> 1000 Mins Video / mo</li>
-                <li className="flex items-start"><span className="mr-2 text-red-600">✓</span> Unlimited Languages</li>
-                <li className="flex items-start"><span className="mr-2 text-red-600">✓</span> Unlimited Styles</li>
-                <li className="flex items-start"><span className="mr-2 text-red-600">✓</span> White Labeling</li>
-                <li className="flex items-start"><span className="mr-2 text-red-600">✓</span> Custom Models</li>
-              </ul>
-              <button onClick={handleCtaClick} className="w-full py-3 border-2 border-zinc-900 font-bold hover:bg-red-50 transition shadow-[2px_2px_0px_0px_#dc2626]">Partner With Us</button>
-            </div>
-
-          </div>
-
-          {/* Comparison Table */}
-          <div className="bg-white border-2 border-zinc-900 shadow-[8px_8px_0px_0px_#000] overflow-hidden">
-            <div className="p-6 bg-zinc-50 border-b-2 border-zinc-900">
-                <h3 className="text-2xl font-display font-bold">Feature Comparison</h3>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-white">
-                            <th className="p-4 border-b-2 border-zinc-100 w-1/6"></th>
-                            <th className="p-4 border-b-2 border-zinc-100 font-bold text-center">Basic ($24)</th>
-                            <th className="p-4 border-b-2 border-zinc-100 font-bold text-center">Pro ($49)</th>
-                            <th className="p-4 border-b-2 border-zinc-100 font-bold text-center bg-orange-50">Creator ($99)</th>
-                            <th className="p-4 border-b-2 border-zinc-100 font-bold text-center">Agency ($297)</th>
-                            <th className="p-4 border-b-2 border-zinc-100 font-bold text-center">Partner ($999)</th>
-                        </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Monthly Credits</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">10 Mins</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">25 Mins</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50">60 Mins</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">200 Mins</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">1000 Mins</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Export Quality</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">1080p</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">1080p</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50">4K Ultra HD</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">4K Ultra HD</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">8K / RAW</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Watermark</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-400">Yes (Small)</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-green-600">None</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50 font-bold text-green-600">None</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-green-600">None</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-green-600">None</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Generation Queue</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">Standard</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">Priority</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50">Priority</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">Dedicated</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">Dedicated GPU</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Languages</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50 font-bold text-orange-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-purple-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-red-600">Unlimited</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Visual Styles</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50 font-bold text-orange-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-purple-600">Unlimited</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-red-600">Unlimited</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Background Music</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-400">-</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-400">-</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50 font-bold text-orange-600">Included</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-purple-600">Included</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-red-600">Included</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Speed Control</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-400">Normal</td>
-                            <td className="p-4 border-b border-zinc-100 text-center text-zinc-400">Normal</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50 font-bold text-orange-600">Adjustable</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-purple-600">Adjustable</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-red-600">Adjustable</td>
-                        </tr>
-                        <tr>
-                            <td className="p-4 border-b border-zinc-100 font-bold">Input Mode</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">Prompt</td>
-                            <td className="p-4 border-b border-zinc-100 text-center">Prompt</td>
-                            <td className="p-4 border-b border-zinc-100 text-center bg-orange-50 font-bold text-orange-600">Script + PDF</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-purple-600">Script + PDF</td>
-                            <td className="p-4 border-b border-zinc-100 text-center font-bold text-red-600">Script + PDF</td>
-                        </tr>
-                         <tr>
-                            <td className="p-4 font-bold">API Access</td>
-                            <td className="p-4 text-center">-</td>
-                            <td className="p-4 text-center">-</td>
-                            <td className="p-4 text-center bg-orange-50">-</td>
-                            <td className="p-4 text-center font-bold text-green-600">Included</td>
-                            <td className="p-4 text-center font-bold text-green-600">Unlimited</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="py-24 px-6 bg-white border-t-2 border-zinc-900">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-4xl font-display font-bold mb-12 text-center">Common Questions</h2>
-          <div className="space-y-4">
-            {[
-              { q: "How does the visual generation work?", a: "We analyze your text to identify key concepts, then our 'Crayonic' engine draws unique, vector-based illustrations stroke-by-stroke. It's not just static image generation; it's an animation process." },
-              { q: "Do I own the videos I create?", a: "Yes. Once exported, you have full commercial rights to your videos, even on the Premium plan." }
-            ].map((item, idx) => (
-              <div key={idx} className="border-2 border-zinc-900 shadow-[4px_4px_0px_0px_#e5e7eb]">
-                <button 
-                  onClick={() => toggleFaq(idx)}
-                  className="w-full px-6 py-4 text-left font-bold text-lg flex justify-between items-center hover:bg-gray-50 focus:outline-none"
-                >
-                  <span>{item.q}</span>
-                  <span className={`transform transition-transform ${openFaq === idx ? 'rotate-180' : ''}`}>▼</span>
-                </button>
-                {openFaq === idx && (
-                  <div className="px-6 py-4 border-t-2 border-zinc-100 text-zinc-600 leading-relaxed bg-[#FAFAF9]">
-                    {item.a}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Book Demo CTA */}
-      <section className="py-20 px-6 bg-[#FAFAF9] border-t-2 border-zinc-900">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-block p-8 border-2 border-zinc-900 bg-white shadow-[8px_8px_0px_0px_#000] relative">
-            <h2 className="text-3xl md:text-4xl font-display font-bold mb-4">
-              Still have questions?
-            </h2>
-            <p className="text-lg text-zinc-600 mb-8 max-w-xl mx-auto leading-relaxed">
-              If you have specific requirements or want to see how Explain fits into your workflow, let's talk.
-            </p>
-            <a 
-              href="https://cal.com/rashmi-ranjan-gsitpp/30min" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-8 py-3 bg-zinc-900 text-white font-bold border-2 border-transparent hover:bg-orange-600 hover:border-zinc-900 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px]"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-              Book a Demo
-            </a>
+          <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
             
-            <div className="absolute -top-3 -left-3 w-6 h-6 rounded-full bg-red-500 border-2 border-zinc-900"></div>
-            <div className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-red-500 border-2 border-zinc-900"></div>
+            {/* All-Access ($99) */}
+            <div className="bg-zinc-900 text-white border-2 border-zinc-900 p-8 shadow-[12px_12px_0px_0px_#ea580c] relative flex flex-col hover:-translate-y-1 transition-transform order-1">
+              <div className="absolute top-0 right-0 bg-orange-500 text-white text-xs font-bold px-4 py-2 border-l-2 border-b-2 border-zinc-900">ALL ACCESS</div>
+              <div className="mb-4"><span className="px-3 py-1 bg-white/10 border border-white/20 text-xs font-bold uppercase text-white tracking-widest">Everything Included</span></div>
+              <h3 className="text-3xl font-display font-bold mb-2 text-orange-500">Creator Pass</h3>
+              <div className="mb-6">
+                <span className="text-6xl font-display font-bold tracking-tighter">$99</span>
+                <span className="text-zinc-400 text-xl">/mo</span>
+              </div>
+              <ul className="space-y-3 mb-8 flex-1 text-sm font-medium text-zinc-300 text-left">
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> 60 Minutes Video / Month</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> Ultra HD Export (4K)</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> No Watermark</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> Unlimited Languages</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> All Visual Styles Included</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> Custom Logo Overlays</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> Script Generation Mode</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> Priority Support</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> Duration: 15s to 10 Mins</li>
+                <li className="flex items-start"><span className="mr-3 text-orange-500 text-lg">✓</span> All Voice Options</li>
+              </ul>
+              <button onClick={handleCtaClick} className="w-full py-4 bg-orange-600 border-2 border-white font-bold hover:bg-orange-700 transition shadow-[4px_4px_0px_0px_#fff] text-lg">Get Started</button>
+            </div>
+
+            {/* Enterprise Pass */}
+            <div className="bg-white text-zinc-900 border-2 border-zinc-900 p-8 shadow-[12px_12px_0px_0px_#zinc-900] relative flex flex-col hover:-translate-y-1 transition-transform order-2">
+              <div className="mb-6 mt-2 text-left">
+                 <h3 className="text-3xl font-display font-bold mb-2">Enterprise Pass</h3>
+                 <p className="text-zinc-500">For teams, agencies, and high-volume generation.</p>
+              </div>
+
+              <div className="mb-6 text-left">
+                <span className="text-4xl font-display font-bold tracking-tighter">Contact Sales</span>
+              </div>
+              
+              <div className="h-px bg-zinc-200 w-full mb-8"></div>
+
+              <ul className="space-y-3 mb-8 flex-1 text-sm font-medium text-zinc-600 text-left">
+                <li className="flex items-start"><span className="mr-3 text-zinc-900 text-lg">✓</span> <strong>Unlimited</strong> Everything</li>
+                <li className="flex items-start"><span className="mr-3 text-zinc-900 text-lg">✓</span> Full API Access</li>
+                <li className="flex items-start"><span className="mr-3 text-zinc-900 text-lg">✓</span> Dedicated Account Manager</li>
+                <li className="flex items-start"><span className="mr-3 text-zinc-900 text-lg">✓</span> Custom Voice Clones</li>
+                <li className="flex items-start"><span className="mr-3 text-zinc-900 text-lg">✓</span> SSO & Security Reviews</li>
+                <li className="flex items-start"><span className="mr-3 text-zinc-900 text-lg">✓</span> Priority Rendering Queue</li>
+                <li className="flex items-start"><span className="mr-3 text-zinc-900 text-lg">✓</span> White-label Solution</li>
+              </ul>
+              
+              <a 
+                href="https://cal.com/rashmi-ranjan-gsitpp/30min?duration=20&layout=mobile&overlayCalendar=true" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block text-center w-full py-4 bg-zinc-900 text-white border-2 border-zinc-900 text-lg font-bold hover:bg-zinc-800 transition shadow-[4px_4px_0px_0px_#000] hover:shadow-[2px_2px_0px_0px_#000] hover:translate-x-[2px] hover:translate-y-[2px]"
+              >
+                Book a Demo
+              </a>
+            </div>
+
           </div>
+
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-zinc-900 text-[#FAFAF9] py-20 px-6 border-t-2 border-zinc-900">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12">
-          
-          <div className="flex flex-col gap-6">
-            <div>
-              <h2 className="text-8xl font-display font-bold tracking-tighter mb-4 text-white">Explain.</h2>
-              <p className="text-xl text-zinc-400 max-w-md leading-relaxed font-light">
-                AI-powered whiteboard video generator. <br/>
-                Convert documents into engaging videos in minutes.
-              </p>
-            </div>
-            
-            <div className="flex gap-6 font-bold text-lg flex-wrap">
-                <button onClick={() => { window.scrollTo(0,0); setCurrentView('landing'); }} className="hover:text-orange-500 transition-colors">Home</button>
-                <button onClick={() => { window.scrollTo(0,0); setCurrentView('pricing'); }} className="hover:text-orange-500 transition-colors">Pricing</button>
-                <button onClick={() => { window.scrollTo(0,0); setCurrentView('blogs'); }} className="hover:text-orange-500 transition-colors">Blogs</button>
-                <button onClick={() => { window.scrollTo(0,0); setCurrentView('privacy'); }} className="hover:text-orange-500 transition-colors text-left">Privacy Policy</button>
-            </div>
-          </div>
-
-          <div className="flex flex-col justify-end md:items-end gap-8">
-             <div className="flex gap-6">
-                <a href="https://x.com/explainltd" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-orange-500 transition-colors"><svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
-                <a href="https://instagram.com/explain.ltd" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-orange-500 transition-colors"><svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg></a>
-                <a href="https://youtube.com/@Explain-ltd" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-orange-500 transition-colors"><svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 6.42v11.16a29 29 0 0 0 .46 2.42 2.78 2.78 0 0 0 1.94 2c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-2.42V6.42a29 29 0 0 0-.46-2z"/><polygon fill="#FAFAF9" points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></svg></a>
-                <a href="https://linkedin.com/company/explain-ltd" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-orange-500 transition-colors"><svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg></a>
-             </div>
-
-             <div className="flex flex-col md:items-end gap-2">
-                <a href="mailto:ceo@explain.ltd" className="text-2xl font-bold hover:text-orange-500 transition-colors">
-                  ceo@explain.ltd
-                </a>
-                <p className="text-zinc-500 text-sm font-mono">
-                  © {new Date().getFullYear()} Explain Ltd. All rights reserved.
+      {/* Book a Demo Section - Styled as a Card */}
+      <section className="py-24 px-6 bg-[#FAFAF9] border-t-2 border-zinc-900 relative overflow-hidden">
+        {/* Abstract Background Pattern */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '16px 16px' }}></div>
+        
+        <div className="max-w-4xl mx-auto relative z-10">
+            <div className="bg-white border-2 border-zinc-900 p-12 shadow-[12px_12px_0px_0px_#000] text-center flex flex-col items-center">
+                <div className="inline-block px-4 py-1 bg-orange-100 text-orange-800 font-mono text-xs font-bold uppercase tracking-widest border border-orange-200 mb-6">
+                    Sales & Support
+                </div>
+                <h2 className="text-4xl md:text-5xl font-display font-bold text-zinc-900 mb-6">Still have questions?</h2>
+                <p className="text-xl text-zinc-600 max-w-lg mx-auto mb-10 leading-relaxed">
+                    We know adopting new AI tools can be a shift. Book a free 20-minute demo to walk through your specific use case.
                 </p>
-             </div>
-          </div>
+                <a 
+                    href="https://cal.com/rashmi-ranjan-gsitpp/30min?duration=20&layout=mobile&overlayCalendar=true"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-3 bg-zinc-900 text-white px-8 py-4 text-lg font-bold border-2 border-zinc-900 shadow-[6px_6px_0px_0px_#ea580c] hover:shadow-[2px_2px_0px_0px_#ea580c] hover:translate-x-[4px] hover:translate-y-[4px] transition-all"
+                >
+                    <span>Book a Free Meeting</span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </a>
+            </div>
+        </div>
+      </section>
+      
+      {/* FOOTER - Centered Layout */}
+      <footer className="bg-zinc-900 text-white py-24 px-6 border-t-2 border-zinc-900">
+        <div className="max-w-7xl mx-auto flex flex-col items-center text-center">
+            
+            {/* Big Branding */}
+            <h1 className="text-[18vw] lg:text-[220px] leading-[0.8] font-display font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-700 select-none mb-8">
+            Explain.
+            </h1>
 
+            {/* Description */}
+            <p className="text-lg md:text-xl text-zinc-400 max-w-2xl font-light mb-12 leading-relaxed">
+                The anti-PowerPoint tool for the modern creator. Turn complex ideas into clear, engaging visual narratives in minutes with generative AI.
+            </p>
+
+            {/* Links & Contact */}
+            <div className="w-full max-w-4xl border-t border-zinc-800 pt-12 flex flex-col md:flex-row justify-between items-center gap-8">
+                
+                {/* Socials */}
+                <div className="flex gap-4">
+                    <a href="https://x.com/explainltd" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                        <svg className="w-5 h-5 fill-current text-white group-hover:text-white" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                    </a>
+                    <a href="https://instagram.com/explain.ltd" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                        <svg className="w-6 h-6 stroke-current text-white group-hover:text-white" fill="none" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+                    </a>
+                    <a href="https://youtube.com/@Explain-ltd" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                        <svg className="w-6 h-6 fill-current text-white group-hover:text-white" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"></path></svg>
+                    </a>
+                    <a href="https://www.facebook.com/share/1aQRVSvT2s/" target="_blank" rel="noreferrer" className="w-12 h-12 bg-white/5 hover:bg-orange-500 flex items-center justify-center rounded-full transition-all group">
+                        <svg className="w-6 h-6 fill-current text-white group-hover:text-white" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"></path></svg>
+                    </a>
+                </div>
+
+                {/* Email */}
+                <div>
+                     <a href="mailto:ceo@explain.ltd" className="flex items-center gap-3 text-white hover:text-orange-500 transition-colors font-display font-bold text-xl">
+                        <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        </div>
+                        ceo@explain.ltd
+                     </a>
+                </div>
+            </div>
+
+            {/* Copyright */}
+            <div className="mt-16 text-zinc-600 font-mono text-xs">
+                © {new Date().getFullYear()} Explain Ltd. All rights reserved.
+            </div>
         </div>
       </footer>
-
     </div>
   );
 };
