@@ -18,13 +18,14 @@ export interface GeneratedImage {
 
 export type GenerationStatus = 'idle' | 'scripting' | 'audio-gen' | 'visual-gen' | 'rendering' | 'complete' | 'error';
 
-export type VideoDuration = '5s' | '15s' | '30s' | '1min' | '2min' | '5min' | '25min';
+export type VideoDuration = '5s' | '15s' | '30s' | '1min' | '2min' | '5min';
+export type VideoQuality = '720p' | '1080p';
 export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
 export type VideoPitch = 'low' | 'normal' | 'high';
 export type AspectRatio = '16:9' | '9:16' | '1:1';
-export type VisualStyle = 'hand-drawn' | 'crayonic' | 'corporate' | 'minimalist' | 'notebook';
+export type VisualStyle = 'hand-drawn' | 'notebook' | 'blueprint' | 'neon';
 export type InputMode = 'prompt' | 'script';
-export type MusicStyle = 'none' | 'finance' | 'education' | 'tech' | 'cinematic';
+export type MusicStyle = 'none' | 'lofi' | 'corporate' | 'energetic' | 'suspense' | 'calm';
 
 export interface InputFile {
   name: string;
@@ -34,6 +35,7 @@ export interface InputFile {
 
 export interface AppConfig {
   duration: VideoDuration;
+  quality: VideoQuality;
   voice: VoiceName;
   pitch: VideoPitch;
   aspectRatio: AspectRatio;
@@ -41,7 +43,8 @@ export interface AppConfig {
   language: string;
   inputMode: InputMode;
   musicStyle: MusicStyle;
-  logoData: string | null; // base64 of uploaded logo
+  logoData: string | null;
+  useColor: boolean; // New option for Color vs B&W
 }
 
 export interface ScriptScene {
@@ -49,28 +52,21 @@ export interface ScriptScene {
     visualPrompt: {
         idea: string;
         prompt: string;
-        top_text: string; // The opening words of the sentence
+        top_text: string;
         labels: string[];
     };
 }
 
 export interface FullScript {
     scenes: ScriptScene[];
-    estimatedCost?: number; // Real-time cost tracking
-}
-
-export interface UserProfile {
-  uid: string;
-  email: string;
-  createdAt: any;
 }
 
 export interface VideoDocument {
-  id?: string;
+  id: string;
   uid: string;
   title: string;
   status: 'processing' | 'completed' | 'failed';
   duration: string;
   videoUrl: string;
-  createdAt: any; // Timestamp
+  createdAt: Date;
 }

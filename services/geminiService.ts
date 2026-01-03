@@ -5,32 +5,21 @@ import { FullScript, VideoDuration, VoiceName, AspectRatio, VisualStyle, InputFi
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// --- MODEL CONFIGURATION & PRICING (Per Unit) ---
-
-// SCRIPT: Gemini 3 Pro
+// --- MODEL CONFIGURATION ---
 const SCRIPT_MODEL = "gemini-3-pro-preview"; 
-const COST_SCRIPT_PER_RUN = 0.004; // Avg input/output tokens for a script
-
-// IMAGE: Imagen 4.0 Fast
 const IMAGE_MODEL = "imagen-4.0-generate-001"; 
-const COST_IMAGE_PER_UNIT = 0.01; // Target per-image cost
-
-// AUDIO: Gemini Flash TTS
-// NOTE: 'gemini-2.5-flash-preview-tts' is the dedicated TTS model. 
-// Pro models generally do not support direct TTS output in standard endpoints.
 const TTS_MODEL = "gemini-2.5-flash-preview-tts";
-const COST_AUDIO_PER_MIN = 0.015; // Approx cost per minute of audio
 
 const visualPromptSchema: Schema = {
     type: Type.OBJECT,
     properties: {
-        idea: { type: Type.STRING, description: "Visual Metaphor (e.g. 'Man drowning in paperwork')." },
-        prompt: { type: Type.STRING, description: "Detailed scene description. Expressive characters. Action." },
-        top_text: { type: Type.STRING, description: "Punchy Hand-Lettered Title (2-4 words)." },
+        idea: { type: Type.STRING, description: "Clear visual concept." },
+        prompt: { type: Type.STRING, description: "Detailed marker sketch description. Edge-to-edge drawing." },
+        top_text: { type: Type.STRING, description: "Text integrated INTO the visual (1-3 words)." },
         labels: { 
             type: Type.ARRAY, 
             items: { type: Type.STRING }, 
-            description: "1-2 labels for clarity." 
+            description: "Contextual labels." 
         }
     },
     required: ["idea", "prompt", "top_text", "labels"]
@@ -39,7 +28,7 @@ const visualPromptSchema: Schema = {
 const scriptSceneSchema: Schema = {
     type: Type.OBJECT,
     properties: {
-        voiceover: { type: Type.STRING, description: "Voiceover text." },
+        voiceover: { type: Type.STRING, description: "Clean narration text." },
         visualPrompt: visualPromptSchema
     },
     required: ["voiceover", "visualPrompt"]
@@ -57,128 +46,50 @@ const fullScriptSchema: Schema = {
   required: ["scenes"]
 };
 
-// --- HIGH TRAFFIC HANDLER ---
-async function callWithRetry<T>(
-    fn: () => Promise<T>, 
-    retries = 3,  
-    delay = 1000, 
-    onRetry?: (msg: string) => void
-): Promise<T> {
+async function callWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000, onRetry?: (msg: string) => void): Promise<T> {
     try {
         return await fn();
     } catch (error: any) {
-        const isRateLimit = error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('resource exhausted');
-        const isServerOverload = error.message?.includes('503') || error.message?.includes('500');
-
-        if ((isRateLimit || isServerOverload) && retries > 0) {
+        const isRateLimit = error.message?.includes('429') || error.message?.includes('quota');
+        if (isRateLimit && retries > 0) {
             const backoff = Math.min(delay * 2, 10000); 
-            const msg = `High Traffic (${error.status || 'Busy'}). Pausing for ${Math.round(backoff/1000)}s...`;
-            
-            console.warn(msg);
-            if (onRetry) onRetry(msg);
-
+            if (onRetry) onRetry(`Busy... Retrying in ${Math.round(backoff/1000)}s`);
             await new Promise(resolve => setTimeout(resolve, backoff));
             return callWithRetry(fn, retries - 1, backoff, onRetry);
-        } else if (retries === 0 && isRateLimit) {
-            // Explicit error for UI
-            throw new Error("Quota Exceeded. Please check your Google AI Studio limits or Billing Account.");
-        } else if (retries > 0) {
-            console.warn(`API Error: ${error.message}. Retrying...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return callWithRetry(fn, retries - 1, delay * 1.5, onRetry);
-        } else {
-            throw error;
         }
+        throw error;
     }
 }
 
-export const generateScript = async (
-    topic: string, 
-    duration: VideoDuration, 
-    aspectRatio: AspectRatio, 
-    language: string, 
-    inputMode: InputMode, 
-    file?: InputFile, 
-    onStatusUpdate?: (status: string) => void
-): Promise<FullScript> => {
+export const generateScript = async (topic: string, duration: VideoDuration, aspectRatio: AspectRatio, language: string, inputMode: InputMode, file?: InputFile, onStatusUpdate?: (status: string) => void): Promise<FullScript> => {
   return callWithRetry(async () => {
-    
-    // COST OPTIMIZATION: STRICT SCENE COUNT
-    // Minimizes Output Tokens by enforcing a rigid structure.
-    
-    let targetWordCount = 40; 
-    let minScenes = 4;
-    let maxScenes = 4;
-    let durationMin = 0.5;
+    let targetScenes = 6; 
+    if (duration === '5s') targetScenes = 1;
+    else if (duration === '15s') targetScenes = 3;
+    else if (duration === '30s') targetScenes = 6;
+    else if (duration === '1min') targetScenes = 13;
 
-    if (duration === '5s') {
-        targetWordCount = 12; minScenes = 1; maxScenes = 2; durationMin = 0.1;
-    }
-    else if (duration === '15s') { 
-        targetWordCount = 30; minScenes = 4; maxScenes = 4; durationMin = 0.25;
-    }
-    else if (duration === '30s') { 
-        targetWordCount = 65; minScenes = 7; maxScenes = 8; durationMin = 0.5;
-    } 
-    else if (duration === '1min') { 
-        targetWordCount = 130; minScenes = 15; maxScenes = 15; durationMin = 1.0;
-    }
-    else if (duration === '2min') {
-        targetWordCount = 260; minScenes = 30; maxScenes = 30; durationMin = 2.0;
-    }
-    else if (duration === '5min') { 
-        targetWordCount = 650; minScenes = 75; maxScenes = 75; durationMin = 5.0;
-    } 
-    else { 
-        targetWordCount = 3500; minScenes = 250; maxScenes = 300; durationMin = 25.0;
-    }
-
-    const pacingInstruction = `Pacing: STRICT 4 seconds per scene. Total scenes: ${minScenes}.`;
-
-    let coreInstruction = "";
-    if (inputMode === 'script') {
-        coreInstruction = `
-            **MODE: EXACT SCRIPT ADAPTATION**
-            1. Use provided text verbatim (translate to ${language}).
-            2. SPLIT into EXACTLY ${minScenes} scenes.
-            3. Create a cohesive visual narrative where each scene flows into the next.
-        `;
-    } else {
-        coreInstruction = `
-            **MODE: CREATIVE GENERATION**
-            1. Write a script about: ${topic}.
-            2. Target Word Count: ${targetWordCount}.
-            3. EXACT SCENE COUNT: ${minScenes}.
-            4. Ensure a strong narrative arc (Hook -> Concept -> Explanation -> Conclusion).
-        `;
-    }
-
-    const systemPrompt = `
-      You are "Explain", a professional whiteboard video director.
+    const systemPrompt = `You are a professional video director for 'Explain'.
       
-      ${coreInstruction}
-      ${pacingInstruction}
-      Language: ${language}.
+      STRICT NARRATIVE RULES:
+      - TOTAL VIDEO DURATION: ${duration}.
+      - SCENE COUNT: Exactly ${targetScenes} scenes.
+      - LANGUAGE: Narrate in ${language}.
       
-      **VISUAL STYLE GUIDANCE:**
-      - **Style:** "Sketch-note" infographic aesthetic. Hand-drawn diagrams and doodles.
-      - **Visuals:** Central concept with connected nodes, arrows, and small icons.
-      - **Metaphors:** Use visual metaphors to explain abstract concepts (e.g., a funnel for "Sales").
-      - **Continuity:** Try to make visual elements flow from one scene to another if possible.
-      - **Text:** Keep top_text extremely short (1-3 words) and impactful.
+      STRICT VISUAL STYLE (CLEAN & CLEAR):
+      - VISUALS: Minimalist professional marker sketch on a clean WHITE whiteboard.
+      - CLEAR TEXTURES: No shading, no complex backgrounds. Beautiful thick ink lines.
+      - INTEGRATED TEXT: Every scene must have text (1-3 words) hand-drawn AS PART OF the sketch.
+      - DO NOT provide outer text instructions.
       
-      Output JSON only.
-    `;
+      Return ONLY valid JSON.`;
 
     const contents = [];
     if (file) {
-        contents.push({
-            inlineData: { mimeType: file.mimeType, data: file.data }
-        });
-        contents.push({ text: `Source Document: ${file.name}` });
+        contents.push({ inlineData: { mimeType: file.mimeType, data: file.data } });
+        contents.push({ text: `Context: ${file.name}` });
     }
-    const inputLabel = inputMode === 'script' ? "Full Script Text" : "Topic/Request";
-    contents.push({ text: `${inputLabel}: ${topic}` });
+    contents.push({ text: `Target Topic: ${topic}` });
 
     const response = await ai.models.generateContent({
       model: SCRIPT_MODEL,
@@ -191,64 +102,35 @@ export const generateScript = async (
       },
     });
 
-    if (!response.text) throw new Error("No text returned from Gemini");
-    const script = JSON.parse(response.text) as FullScript;
-
-    // --- REAL DATA COST CALCULATION ---
-    const sceneCount = script.scenes.length;
-    const estAudioCost = durationMin * COST_AUDIO_PER_MIN;
-    const estImageCost = sceneCount * COST_IMAGE_PER_UNIT;
-    const totalEst = COST_SCRIPT_PER_RUN + estAudioCost + estImageCost;
-    
-    script.estimatedCost = Number(totalEst.toFixed(4));
-
-    return script;
-  }, 10, 2000, onStatusUpdate);
+    if (!response.text) throw new Error("Narrative generation failed");
+    return JSON.parse(response.text) as FullScript;
+  }, 3, 2000, onStatusUpdate);
 };
 
-export const generateSceneImage = async (prompt: string, topText: string, labels: string[] | undefined, aspectRatio: AspectRatio, style: VisualStyle, onStatusUpdate?: (status: string) => void): Promise<string> => {
+export const generateSceneImage = async (prompt: string, topText: string, labels: string[] | undefined, aspectRatio: AspectRatio, style: VisualStyle, useColor: boolean, onStatusUpdate?: (status: string) => void): Promise<string> => {
   return callWithRetry(async () => {
+    const labelsPart = labels && labels.length > 0 ? `With clearly integrated labels: ${labels.join(", ")}` : "";
     
-    const labelString = labels && labels.length > 0 ? `Labels: "${labels.join(", ")}"` : "";
-
-    // Optimized Prompting for Imagen 4
-    // We use descriptive keywords rather than conversational instructions for better diffusion results.
-    let finalPrompt = "";
+    let styleStr = useColor 
+        ? "Professional high-definition marker illustration, clear crisp textures, vibrant primary marker colors, thick uniform black outlines. Pure white background. Minimalist sketch-note aesthetic. Perfect for whiteboard animation."
+        : "Professional high-definition minimalist black marker ink strokes, clean uniform thick line art, no colors, high contrast. Pure white background. Minimalist sketch-note aesthetic.";
     
-    if (style === 'notebook') {
-        finalPrompt = `(Ballpoint pen sketch:1.3) of ${prompt}. Blue ink on white paper. 
-        Loose messy lines, student doodle aesthetic. 
-        Text: "${topText}" written in messy cursive handwriting. 
-        ${labelString}. 
-        White notebook paper background, slightly wrinkled texture. High contrast.`;
-    } else {
-        // Standard "Explain" Whiteboard Look
-        finalPrompt = `(Whiteboard animation style:1.4) marker drawing of ${prompt}. 
-        Thick black ink outlines, vector art style, simple infographic aesthetic. 
-        Colors: Cyan, Orange, Purple highlights. 
-        Text: "${topText}" written in bold hand-lettered marker font. 
-        ${labelString}.
-        Pure white background, no shading, flat design, expressive stick figures, macro view.`;
-    }
+    const finalPrompt = `${styleStr}. Subject: ${prompt}. Integrated text "${topText.toUpperCase()}" hand-drawn in marker style within the composition. ${labelsPart}. Clear textures, edge-to-edge drawing.`;
 
-    // Using Imagen 4 for high-quality, fast generation
     const response = await ai.models.generateImages({
       model: IMAGE_MODEL,
       prompt: finalPrompt,
       config: {
-        numberOfImages: 1, // Batch size 1 to keep per-scene cost low
+        numberOfImages: 1,
         aspectRatio: aspectRatio,
         outputMimeType: 'image/jpeg',
       }
     });
 
     const base64 = response.generatedImages?.[0]?.image?.imageBytes;
-    
-    if (!base64) throw new Error("No image data found from Imagen");
-    
+    if (!base64) throw new Error("Visual asset data missing");
     return `data:image/jpeg;base64,${base64}`;
-
-  }, 5, 2000, onStatusUpdate); 
+  }, 3, 1000, onStatusUpdate); 
 };
 
 export const generateSpeech = async (text: string, voiceName: VoiceName, audioCtx: AudioContext, onStatusUpdate?: (status: string) => void): Promise<AudioBuffer> => {
@@ -259,46 +141,23 @@ export const generateSpeech = async (text: string, voiceName: VoiceName, audioCt
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName }
-          }
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } }
         }
       }
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("No audio data returned");
+    if (!base64Audio) throw new Error("Narration synthesis failed");
 
-    const rawBytes = decodeBase64(base64Audio);
-    return await decodePCMData(rawBytes, audioCtx, 24000, 1);
-  }, 5, 1000, onStatusUpdate);
+    const binaryString = atob(base64Audio);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+    
+    const dataInt16 = new Int16Array(bytes.buffer);
+    const buffer = audioCtx.createBuffer(1, dataInt16.length, 24000);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < dataInt16.length; i++) channelData[i] = dataInt16[i] / 32768.0;
+    
+    return buffer;
+  }, 3, 1000, onStatusUpdate);
 };
-
-function decodeBase64(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function decodePCMData(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
-  }
-  return buffer;
-}
