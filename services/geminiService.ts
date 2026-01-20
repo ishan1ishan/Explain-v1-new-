@@ -2,33 +2,31 @@
 import { GoogleGenAI, Type, Schema, Modality } from "@google/genai";
 import { FullScript, VideoDuration, VoiceName, AspectRatio, VisualStyle, InputFile, InputMode } from "../types";
 
-// Initialize Gemini
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// --- MODEL CONFIGURATION ---
-const SCRIPT_MODEL = "gemini-3-pro-preview"; 
+const SCRIPT_MODEL = "gemini-3-flash-preview"; 
 const IMAGE_MODEL = "imagen-4.0-generate-001"; 
 const TTS_MODEL = "gemini-2.5-flash-preview-tts";
 
 const visualPromptSchema: Schema = {
     type: Type.OBJECT,
     properties: {
-        idea: { type: Type.STRING, description: "Clear visual concept." },
-        prompt: { type: Type.STRING, description: "Detailed marker sketch description. Edge-to-edge drawing." },
-        top_text: { type: Type.STRING, description: "Text integrated INTO the visual (1-3 words)." },
+        idea: { type: Type.STRING, description: "Very brief concept (e.g., 'Growth metaphor')." },
+        gen_prompt: { type: Type.STRING, description: "Telegraphic Prompt. Max 15 words. Comma-separated keywords: [Subject], [Action], [Objects], [Style]. Style keywords must include: 'Doodle', 'thick marker', 'stick figure'." },
+        top_text: { type: Type.STRING, description: "Key phrase to write on board (max 3 words)." },
         labels: { 
             type: Type.ARRAY, 
-            items: { type: Type.STRING }, 
-            description: "Contextual labels." 
+            items: { type: Type.STRING },
+            description: "1-2 keywords for labels inside the drawing."
         }
     },
-    required: ["idea", "prompt", "top_text", "labels"]
+    required: ["idea", "gen_prompt", "top_text", "labels"]
 };
 
 const scriptSceneSchema: Schema = {
     type: Type.OBJECT,
     properties: {
-        voiceover: { type: Type.STRING, description: "Clean narration text." },
+        voiceover: { type: Type.STRING, description: "The exact text for this segment." },
         visualPrompt: visualPromptSchema
     },
     required: ["voiceover", "visualPrompt"]
@@ -63,33 +61,32 @@ async function callWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000,
 
 export const generateScript = async (topic: string, duration: VideoDuration, aspectRatio: AspectRatio, language: string, inputMode: InputMode, file?: InputFile, onStatusUpdate?: (status: string) => void): Promise<FullScript> => {
   return callWithRetry(async () => {
-    let targetScenes = 6; 
-    if (duration === '5s') targetScenes = 1;
-    else if (duration === '15s') targetScenes = 3;
-    else if (duration === '30s') targetScenes = 6;
-    else if (duration === '1min') targetScenes = 13;
+    let targetSeconds = 30;
+    if (duration === '5s') targetSeconds = 5;
+    else if (duration === '15s') targetSeconds = 15;
+    else if (duration === '30s') targetSeconds = 30;
+    else if (duration === '1min') targetSeconds = 60;
+    else if (duration === '2min') targetSeconds = 120;
+    
+    // Role: Visual Engine for Golpo
+    const systemPrompt = `You are the Visual Engine for a cost-optimized Whiteboard Animation App. 
+    
+    STRICT VISUAL STYLE (The "Golpo" Look):
+    All image prompts must describe:
+    * Style: Hand-drawn doodle, thick marker lines, sketch-note style.
+    * Elements: Stick figures, simple icons (lightbulbs, gears), flowcharts, and arrows.
+    * Colors: Primary marker colors (Blue, Orange, Green, Red) with black outlines.
+    * NO: Photorealism, 3D, shading, complex backgrounds, or cinematic lighting.
 
-    const systemPrompt = `You are a professional video director for 'Explain'.
-      
-      STRICT NARRATIVE RULES:
-      - TOTAL VIDEO DURATION: ${duration}.
-      - SCENE COUNT: Exactly ${targetScenes} scenes.
-      - LANGUAGE: Narrate in ${language}.
-      
-      STRICT VISUAL STYLE (CLEAN & CLEAR):
-      - VISUALS: Minimalist professional marker sketch on a clean WHITE whiteboard.
-      - CLEAR TEXTURES: No shading, no complex backgrounds. Beautiful thick ink lines.
-      - INTEGRATED TEXT: Every scene must have text (1-3 words) hand-drawn AS PART OF the sketch.
-      - DO NOT provide outer text instructions.
-      
-      Return ONLY valid JSON.`;
+    PROTOCOL (Token Compression):
+    1. Max Length: Keep 'gen_prompt' under 15 words.
+    2. No Filler: Remove "A picture of", "Show me".
+    3. Format: [Subject], [Action], [Objects], [Style]
 
-    const contents = [];
-    if (file) {
-        contents.push({ inlineData: { mimeType: file.mimeType, data: file.data } });
-        contents.push({ text: `Context: ${file.name}` });
-    }
-    contents.push({ text: `Target Topic: ${topic}` });
+    Output JSON Only. Language: ${language}.
+    Target Duration: ${duration}.`;
+
+    const contents = [{ text: `Convert this topic/script into a scene sequence: ${topic}. \n\nIf provided, use this context file content: ${file ? atob(file.data).substring(0, 10000) : "None"}` }];
 
     const response = await ai.models.generateContent({
       model: SCRIPT_MODEL,
@@ -98,24 +95,22 @@ export const generateScript = async (topic: string, duration: VideoDuration, asp
         systemInstruction: systemPrompt,
         responseMimeType: "application/json",
         responseSchema: fullScriptSchema,
-        temperature: 0.7,
+        temperature: 0.7, // Lower temperature for more consistent formatting
       },
     });
 
-    if (!response.text) throw new Error("Narrative generation failed");
+    if (!response.text) throw new Error("Script generation failed");
     return JSON.parse(response.text) as FullScript;
   }, 3, 2000, onStatusUpdate);
 };
 
-export const generateSceneImage = async (prompt: string, topText: string, labels: string[] | undefined, aspectRatio: AspectRatio, style: VisualStyle, useColor: boolean, onStatusUpdate?: (status: string) => void): Promise<string> => {
+export const generateSceneImage = async (prompt: string, topText: string, labels: string[], aspectRatio: AspectRatio, style: VisualStyle, onStatusUpdate?: (status: string) => void): Promise<string> => {
   return callWithRetry(async () => {
-    const labelsPart = labels && labels.length > 0 ? `With clearly integrated labels: ${labels.join(", ")}` : "";
+    // We take the telegraphic prompt from the script and enforce the "Golpo" look here
+    const styleEnforcement = "style of hand-drawn doodle, thick marker lines, sketch-note, stick figures, white paper background, simple icon, high contrast, primary colors (Blue, Red, Green, Orange), black outlines. NO shading, NO 3D, NO photorealism.";
     
-    let styleStr = useColor 
-        ? "Professional high-definition marker illustration, clear crisp textures, vibrant primary marker colors, thick uniform black outlines. Pure white background. Minimalist sketch-note aesthetic. Perfect for whiteboard animation."
-        : "Professional high-definition minimalist black marker ink strokes, clean uniform thick line art, no colors, high contrast. Pure white background. Minimalist sketch-note aesthetic.";
-    
-    const finalPrompt = `${styleStr}. Subject: ${prompt}. Integrated text "${topText.toUpperCase()}" hand-drawn in marker style within the composition. ${labelsPart}. Clear textures, edge-to-edge drawing.`;
+    // Combining the telegraphic prompt with the style enforcement
+    const finalPrompt = `${prompt}, ${styleEnforcement}`;
 
     const response = await ai.models.generateImages({
       model: IMAGE_MODEL,
@@ -128,7 +123,7 @@ export const generateSceneImage = async (prompt: string, topText: string, labels
     });
 
     const base64 = response.generatedImages?.[0]?.image?.imageBytes;
-    if (!base64) throw new Error("Visual asset data missing");
+    if (!base64) throw new Error("Image generation failed");
     return `data:image/jpeg;base64,${base64}`;
   }, 3, 1000, onStatusUpdate); 
 };
@@ -137,7 +132,7 @@ export const generateSpeech = async (text: string, voiceName: VoiceName, audioCt
   return callWithRetry(async () => {
     const response = await ai.models.generateContent({
       model: TTS_MODEL,
-      contents: { parts: [{ text }] },
+      contents: { parts: [{ text: text }] }, // Direct text, removed "Speak as..." to keep it natural/fast
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -147,7 +142,7 @@ export const generateSpeech = async (text: string, voiceName: VoiceName, audioCt
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("Narration synthesis failed");
+    if (!base64Audio) throw new Error("Audio synthesis failed");
 
     const binaryString = atob(base64Audio);
     const bytes = new Uint8Array(binaryString.length);
